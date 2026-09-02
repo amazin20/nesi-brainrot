@@ -58,20 +58,83 @@ export class Game {
     this.hudAccumulator = 0;
     this.hitCooldown = 0;
     this.bounceCooldown = 0;
+    this.fallback = false;
+    this.fallbackCanvas = null;
+    this.fallbackContext = null;
+    this.fallbackCameraZ = 12;
+    this.fallbackFinishToastCooldown = 0;
     this.lastFrame = performance.now();
     this.animate = this.animate.bind(this);
   }
 
   async init() {
-    this.createScene();
+    try {
+      this.createScene();
+    } catch (error) {
+      console.warn('WebGL недоступен — включён 2D-режим совместимости.', error);
+      this.setupFallbackScene();
+    }
     this.input = new InputController(this.touch);
     this.audio = new AudioController();
-    this.renderer.setAnimationLoop(this.animate);
-    await this.loadAssets();
-    this.buildLevel();
+    if (this.fallback) {
+      this.callbacks.onProgress({ completed: MODEL_FILES.length, total: MODEL_FILES.length, label: 'Режим совместимости готов' });
+      this.resetFallbackRun('ready');
+      window.requestAnimationFrame(this.animate);
+    } else {
+      this.renderer.setAnimationLoop(this.animate);
+      await this.loadAssets();
+      this.buildLevel();
+    }
     this.state = 'ready';
     this.callbacks.onReady();
     this.emitHud();
+  }
+
+  setupFallbackScene() {
+    this.fallback = true;
+    this.fallbackCanvas = document.createElement('canvas');
+    this.fallbackCanvas.className = 'fallback-canvas';
+    this.fallbackCanvas.setAttribute('aria-label', 'Игровое поле в режиме совместимости');
+    this.container.appendChild(this.fallbackCanvas);
+    this.fallbackContext = this.fallbackCanvas.getContext('2d');
+    this.fallbackPlatforms = [
+      { x: 0, z: 10, width: 18, depth: 20, color: '#2359a9' },
+      { x: 0, z: -21, width: 16, depth: 42, color: '#6735a8' },
+      { x: 0, z: -45, width: 18, depth: 8, color: '#16889e' },
+      { x: 0, z: -62, width: 15, depth: 26, color: '#2359a9' },
+      { x: 0, z: -87, width: 14, depth: 24, color: '#b86a28' },
+      { x: 0, z: -112, width: 14, depth: 26, color: '#b52f82' },
+      { x: 0, z: -127.5, width: 17, depth: 7, color: '#16889e' },
+      { x: -1.5, z: -140, width: 12, depth: 14, color: '#6735a8' },
+      { x: 1.7, z: -153.5, width: 10, depth: 9, color: '#2359a9' },
+      { x: -1.2, z: -166, width: 12, depth: 12, color: '#b52f82' },
+      { x: 0, z: -179, width: 18, depth: 14, color: '#16889e' },
+    ];
+    this.fallbackHazards = [
+      { x: -3.2, z: -15, radius: 2.15, color: '#ff4fd8', label: 'МАЯТНИК' },
+      { x: 3.1, z: -24, radius: 2.15, color: '#ff4fd8', label: 'МАЯТНИК' },
+      { x: -1.3, z: -33, radius: 2.15, color: '#8e5cff', label: 'СПИН' },
+      { x: 0, z: -87.5, radius: 2.55, color: '#ff9c3c', label: 'РОЛЛЕР' },
+      { x: -1.3, z: -106.5, radius: 2.1, color: '#ff4fd8', label: 'БАРЬЕР' },
+      { x: 1.4, z: -116.5, radius: 2.1, color: '#ff4fd8', label: 'БАРЬЕР' },
+    ];
+    this.fallbackBouncers = [
+      { x: -3.4, z: -55, radius: 1.4 },
+      { x: 0, z: -61, radius: 1.4 },
+      { x: 3.4, z: -67, radius: 1.4 },
+      { x: -2, z: -71.5, radius: 1.4 },
+    ];
+    this.fallbackCheckpointZ = [-45, -127.5];
+    this.fallbackCargo = { x: 0, z: 6.5, carried: false };
+    this.fallbackStars = Array.from({ length: 90 }, (_, index) => ({
+      x: ((index * 47) % 1000) / 1000,
+      y: ((index * 83) % 530) / 530,
+      size: 1 + (index % 3),
+      alpha: 0.25 + (index % 5) * 0.1,
+    }));
+    this.fallbackPlayer = { x: 0, y: 0, z: 12 };
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
   }
 
   createScene() {
@@ -491,6 +554,10 @@ export class Game {
   }
 
   resetRun() {
+    if (this.fallback) {
+      this.resetFallbackRun('playing');
+      return;
+    }
     this.state = 'playing';
     this.elapsed = 0;
     this.checkpointIndex = 0;
@@ -511,6 +578,28 @@ export class Game {
     this.emitHud();
   }
 
+  resetFallbackRun(state = 'playing') {
+    this.state = state;
+    this.elapsed = 0;
+    this.checkpointIndex = 0;
+    this.hitCooldown = 0;
+    this.bounceCooldown = 0;
+    this.fallbackFinishToastCooldown = 0;
+    this.player = {
+      group: null,
+      visual: null,
+      carrier: null,
+      position: new THREE.Vector3(0, 0, 12),
+      velocity: new THREE.Vector3(),
+      grounded: true,
+      hasCargo: false,
+      radius: 0.58,
+    };
+    this.fallbackCargo = { x: 0, z: 6.5, carried: false };
+    this.fallbackCameraZ = 12;
+    this.emitHud();
+  }
+
   togglePause(force) {
     if (!['playing', 'paused'].includes(this.state)) return;
     const shouldPause = typeof force === 'boolean' ? force : this.state === 'playing';
@@ -520,6 +609,10 @@ export class Game {
   }
 
   animate(now) {
+    if (this.fallback) {
+      this.animateFallback(now);
+      return;
+    }
     const dt = Math.min((now - this.lastFrame) / 1000, 0.034);
     this.lastFrame = now;
     const time = now / 1000;
@@ -538,6 +631,279 @@ export class Game {
     if (this.state === 'won') this.updateConfetti(dt);
     this.updateCamera(dt, time);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  animateFallback(now) {
+    const dt = Math.min((now - this.lastFrame) / 1000, 0.034);
+    this.lastFrame = now;
+    const time = now / 1000;
+
+    if (this.state === 'paused') {
+      if (this.input.consumePause()) this.togglePause(false);
+    } else if (this.state === 'playing') {
+      this.elapsed += dt * 1000;
+      this.updateFallbackPlayer(dt, time);
+      this.hudAccumulator += dt;
+      if (this.hudAccumulator > 0.08) {
+        this.hudAccumulator = 0;
+        this.emitHud();
+      }
+    }
+
+    this.drawFallback(time);
+    window.requestAnimationFrame(this.animate);
+  }
+
+  updateFallbackPlayer(dt, time) {
+    if (this.input.consumePause()) {
+      this.togglePause();
+      return;
+    }
+    if (this.input.consumeRestart()) {
+      this.restart();
+      return;
+    }
+
+    this.hitCooldown = Math.max(0, this.hitCooldown - dt);
+    this.bounceCooldown = Math.max(0, this.bounceCooldown - dt);
+    this.fallbackFinishToastCooldown = Math.max(0, this.fallbackFinishToastCooldown - dt);
+    const move = this.input.getMove();
+    const speed = this.player.hasCargo ? 7.7 : 8.7;
+    const control = this.player.grounded ? 14 : 4.4;
+    this.player.velocity.x = THREE.MathUtils.damp(this.player.velocity.x, move.x * speed, control, dt);
+    this.player.velocity.z = THREE.MathUtils.damp(this.player.velocity.z, move.y * speed, control, dt);
+
+    if (this.input.consumeJump() && this.player.grounded) {
+      this.player.velocity.y = 9.4;
+      this.player.grounded = false;
+      this.audio.jump();
+    }
+
+    this.player.velocity.y -= 22 * dt;
+    this.player.position.addScaledVector(this.player.velocity, dt);
+    this.player.position.x = Math.min(7.2, Math.max(-7.2, this.player.position.x));
+    this.player.position.z = Math.min(15, Math.max(-188, this.player.position.z));
+    if (this.player.position.y <= 0) {
+      this.player.position.y = 0;
+      this.player.velocity.y = 0;
+      this.player.grounded = true;
+    } else {
+      this.player.grounded = false;
+    }
+
+    this.fallbackCameraZ = THREE.MathUtils.damp(this.fallbackCameraZ, this.player.position.z, 4.8, dt);
+
+    if (!this.player.hasCargo && Math.hypot(this.player.position.x - this.fallbackCargo.x, this.player.position.z - this.fallbackCargo.z) < 2.25) {
+      this.pickupCargo();
+    }
+
+    if (this.bounceCooldown <= 0) {
+      for (const bouncer of this.fallbackBouncers) {
+        if (Math.hypot(this.player.position.x - bouncer.x, this.player.position.z - bouncer.z) >= bouncer.radius) continue;
+        this.player.velocity.y = 12.2;
+        this.player.grounded = false;
+        this.bounceCooldown = 0.65;
+        this.audio.jump();
+        this.callbacks.onToast('СУПЕРПРЫЖОК!');
+        break;
+      }
+    }
+
+    if (this.hitCooldown <= 0) {
+      for (const hazard of this.fallbackHazards) {
+        if (Math.hypot(this.player.position.x - hazard.x, this.player.position.z - hazard.z) >= hazard.radius + this.player.radius) continue;
+        const dx = this.player.position.x - hazard.x;
+        const dz = this.player.position.z - hazard.z;
+        const length = Math.hypot(dx, dz) || 1;
+        this.player.velocity.x = dx / length * 9;
+        this.player.velocity.z = dz / length * 9;
+        this.player.velocity.y = Math.max(this.player.velocity.y, 6.4);
+        this.player.grounded = false;
+        this.hitCooldown = 0.78;
+        this.audio.hit();
+        this.callbacks.onToast('ОСТОРОЖНО, УДАР!');
+        break;
+      }
+    }
+
+    this.updateCheckpoints();
+    if (this.player.position.z < -174.5) {
+      if (this.player.hasCargo) {
+        this.win();
+      } else if (this.fallbackFinishToastCooldown <= 0) {
+        this.fallbackFinishToastCooldown = 1.5;
+        this.callbacks.onToast('Без брейнрота финиш не считается!');
+      }
+    }
+
+    if (this.player.position.y < -8) this.respawn('Ты упал — возвращаем на чекпоинт');
+    if (this.player.position.z < -187 && this.state === 'playing') this.respawn('Курс закончился — возвращаем на чекпоинт');
+    if (this.player.grounded && Math.hypot(this.player.velocity.x, this.player.velocity.z) > 0.2) {
+      this.fallbackPlayer.bob = Math.sin(time * 12) * 0.05;
+    } else {
+      this.fallbackPlayer.bob = 0;
+    }
+  }
+
+  drawFallback(time) {
+    const context = this.fallbackContext;
+    if (!context) return;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const scale = Math.min(width / 17, height / 20, 56);
+    const centerX = width / 2;
+    const groundY = height * 0.68;
+    const worldToScreen = (x, z) => [centerX + x * scale, groundY + (z - this.fallbackCameraZ) * scale];
+
+    context.clearRect(0, 0, width, height);
+    const sky = context.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, '#111c55');
+    sky.addColorStop(0.48, '#40256f');
+    sky.addColorStop(1, '#080f2a');
+    context.fillStyle = sky;
+    context.fillRect(0, 0, width, height);
+
+    for (const star of this.fallbackStars) {
+      context.globalAlpha = star.alpha + Math.sin(time * 1.6 + star.x * 18) * 0.08;
+      context.fillStyle = '#d9f8ff';
+      context.fillRect(star.x * width, star.y * height * 0.65, star.size, star.size);
+    }
+    context.globalAlpha = 1;
+
+    const glow = context.createRadialGradient(width * 0.5, height * 0.38, 0, width * 0.5, height * 0.38, width * 0.55);
+    glow.addColorStop(0, 'rgba(87, 69, 207, .24)');
+    glow.addColorStop(1, 'rgba(87, 69, 207, 0)');
+    context.fillStyle = glow;
+    context.fillRect(0, 0, width, height);
+
+    const laneLeft = centerX - 8.2 * scale;
+    const laneWidth = 16.4 * scale;
+    context.fillStyle = 'rgba(5, 12, 35, .64)';
+    context.fillRect(laneLeft, 0, laneWidth, height);
+    context.strokeStyle = 'rgba(91, 220, 255, .18)';
+    context.lineWidth = 2;
+    context.strokeRect(laneLeft, 0, laneWidth, height);
+    context.setLineDash([8, 12]);
+    context.strokeStyle = 'rgba(142, 92, 255, .3)';
+    context.beginPath();
+    context.moveTo(centerX, 0);
+    context.lineTo(centerX, height);
+    context.stroke();
+    context.setLineDash([]);
+
+    const visibleMin = this.fallbackCameraZ - height / scale - 4;
+    const visibleMax = this.fallbackCameraZ + 8;
+    for (const platform of this.fallbackPlatforms) {
+      if (platform.z + platform.depth / 2 < visibleMin || platform.z - platform.depth / 2 > visibleMax) continue;
+      const [x, y] = worldToScreen(platform.x - platform.width / 2, platform.z - platform.depth / 2);
+      const platformWidth = platform.width * scale;
+      const platformHeight = platform.depth * scale;
+      context.fillStyle = platform.color;
+      context.globalAlpha = 0.92;
+      context.fillRect(x, y, platformWidth, platformHeight);
+      context.globalAlpha = 1;
+      context.strokeStyle = 'rgba(143, 248, 255, .45)';
+      context.lineWidth = 2;
+      context.strokeRect(x, y, platformWidth, platformHeight);
+    }
+
+    for (const hazard of this.fallbackHazards) {
+      const [x, y] = worldToScreen(hazard.x, hazard.z);
+      if (y < -80 || y > height + 80) continue;
+      const radius = hazard.radius * scale * 0.62;
+      context.save();
+      context.translate(x, y);
+      context.rotate(time * 1.5 + hazard.z);
+      context.fillStyle = hazard.color;
+      context.globalAlpha = 0.85;
+      context.fillRect(-radius, -radius * 0.24, radius * 2, radius * 0.48);
+      context.fillStyle = 'rgba(255,255,255,.7)';
+      context.fillRect(-radius * 0.12, -radius * 0.85, radius * 0.24, radius * 1.7);
+      context.globalAlpha = 1;
+      context.restore();
+    }
+
+    for (const bouncer of this.fallbackBouncers) {
+      const [x, y] = worldToScreen(bouncer.x, bouncer.z);
+      if (y < -80 || y > height + 80) continue;
+      const radius = bouncer.radius * scale * 0.56;
+      context.fillStyle = 'rgba(64,242,255,.25)';
+      context.beginPath();
+      context.arc(x, y, radius * 1.35, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = '#40f2ff';
+      context.beginPath();
+      context.arc(x, y, radius, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    for (const checkpoint of this.fallbackCheckpointZ) {
+      const [x, y] = worldToScreen(0, checkpoint);
+      if (y < -100 || y > height + 100) continue;
+      const widthGate = 4.8 * scale;
+      const heightGate = 3.5 * scale;
+      context.strokeStyle = '#40f2ff';
+      context.lineWidth = Math.max(3, scale * 0.13);
+      context.globalAlpha = 0.72;
+      context.strokeRect(x - widthGate / 2, y - heightGate, widthGate, heightGate);
+      context.globalAlpha = 1;
+    }
+
+    const [finishX, finishY] = worldToScreen(0, -176.5);
+    if (finishY > -100 && finishY < height + 100) {
+      context.strokeStyle = '#baff4a';
+      context.lineWidth = Math.max(4, scale * 0.16);
+      context.beginPath();
+      context.moveTo(finishX - 4.5 * scale, finishY);
+      context.lineTo(finishX + 4.5 * scale, finishY);
+      context.stroke();
+      context.fillStyle = '#baff4a';
+      context.font = '800 12px Manrope, sans-serif';
+      context.textAlign = 'center';
+      context.fillText('ФИНИШ', finishX, finishY - 0.55 * scale);
+    }
+
+    if (!this.player.hasCargo) {
+      const [cargoX, cargoY] = worldToScreen(this.fallbackCargo.x, this.fallbackCargo.z);
+      context.save();
+      context.translate(cargoX, cargoY - 0.6 * scale);
+      context.rotate(time * 0.9);
+      context.fillStyle = '#baff4a';
+      context.shadowColor = '#baff4a';
+      context.shadowBlur = 18;
+      context.fillRect(-0.55 * scale, -0.55 * scale, 1.1 * scale, 1.1 * scale);
+      context.restore();
+    }
+
+    const [playerX, playerY] = worldToScreen(this.player.position.x, this.player.position.z);
+    context.fillStyle = 'rgba(0,0,0,.28)';
+    context.beginPath();
+    context.ellipse(playerX, playerY + 0.35 * scale, 0.72 * scale, 0.22 * scale, 0, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = '#40f2ff';
+    context.shadowColor = '#40f2ff';
+    context.shadowBlur = 18;
+    context.beginPath();
+    context.arc(playerX, playerY - this.player.position.y * scale + (this.fallbackPlayer.bob ?? 0) * scale, 0.62 * scale, 0, Math.PI * 2);
+    context.fill();
+    context.shadowBlur = 0;
+    context.fillStyle = '#071126';
+    context.beginPath();
+    context.arc(playerX - 0.2 * scale, playerY - this.player.position.y * scale - 0.08 * scale, 0.09 * scale, 0, Math.PI * 2);
+    context.arc(playerX + 0.2 * scale, playerY - this.player.position.y * scale - 0.08 * scale, 0.09 * scale, 0, Math.PI * 2);
+    context.fill();
+    if (this.player.hasCargo) {
+      context.fillStyle = '#baff4a';
+      context.fillRect(playerX - 0.42 * scale, playerY - this.player.position.y * scale - 1.45 * scale, 0.84 * scale, 0.84 * scale);
+      context.strokeStyle = '#efffb1';
+      context.lineWidth = 2;
+      context.strokeRect(playerX - 0.42 * scale, playerY - this.player.position.y * scale - 1.45 * scale, 0.84 * scale, 0.84 * scale);
+    }
+
+    context.fillStyle = 'rgba(225, 244, 255, .72)';
+    context.font = '700 11px Manrope, sans-serif';
+    context.textAlign = 'left';
+    context.fillText('2D-режим совместимости • управление работает', 18, height - 18);
   }
 
   updateWorld(dt, time) {
@@ -669,6 +1035,13 @@ export class Game {
 
   pickupCargo() {
     this.player.hasCargo = true;
+    if (this.fallback) {
+      this.fallbackCargo.carried = true;
+      this.audio.pickup();
+      this.callbacks.onToast('БРЕЙНРОТ ПОДОБРАН — НЕСИ НА ФИНИШ!');
+      this.emitHud();
+      return;
+    }
     this.player.carrier.attach(this.cargo);
     this.cargo.position.set(0, 0.05, 0.18);
     this.cargo.rotation.set(0, Math.PI, 0);
@@ -679,6 +1052,15 @@ export class Game {
   }
 
   respawn(message) {
+    if (this.fallback) {
+      const point = [12, ...this.fallbackCheckpointZ][this.checkpointIndex] ?? 12;
+      this.player.position.set(0, 0, point);
+      this.player.velocity.set(0, 0, 0);
+      this.hitCooldown = 1;
+      this.fallbackCameraZ = point;
+      this.callbacks.onToast(message);
+      return;
+    }
     const point = this.checkpoints[this.checkpointIndex];
     this.player.position.copy(point);
     this.player.velocity.set(0, 0, 0);
@@ -697,7 +1079,7 @@ export class Game {
       localStorage.setItem('nesi-brainrot-best', String(this.best));
     }
     this.audio.win();
-    this.launchConfetti();
+    if (!this.fallback) this.launchConfetti();
     this.emitHud();
     this.callbacks.onWin({ elapsed: this.elapsed, best: this.best, newRecord });
   }
@@ -757,6 +1139,10 @@ export class Game {
 
   snapCamera() {
     if (!this.player) return;
+    if (this.fallback) {
+      this.fallbackCameraZ = this.player.position.z;
+      return;
+    }
     this.camera.position.copy(this.player.position).add(new THREE.Vector3(0, 5.4, 10.2));
     this.camera.lookAt(this.player.position.clone().add(new THREE.Vector3(0, 1.2, -4)));
   }
@@ -777,6 +1163,16 @@ export class Game {
   }
 
   resize() {
+    if (this.fallback) {
+      if (!this.fallbackCanvas || !this.fallbackContext) return;
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      this.fallbackCanvas.width = Math.floor(window.innerWidth * ratio);
+      this.fallbackCanvas.height = Math.floor(window.innerHeight * ratio);
+      this.fallbackCanvas.style.width = `${window.innerWidth}px`;
+      this.fallbackCanvas.style.height = `${window.innerHeight}px`;
+      this.fallbackContext.setTransform(ratio, 0, 0, ratio, 0, 0);
+      return;
+    }
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.65));
