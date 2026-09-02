@@ -105,6 +105,6 @@ elements.restartButton.addEventListener('click', () => {
 
 game.init().catch((error) => {
   console.error(error);
-  elements.loadingLabel.textContent = 'Не удалось запустить игру. Обнови страницу.';
+  elements.loadingLabel.textContent = 'Для 3D-игры нужен включённый WebGL. Включи аппаратное ускорение и открой страницу снова.';
   elements.loadingPercent.textContent = '!';
 });
