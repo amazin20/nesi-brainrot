@@ -5,7 +5,20 @@ export class AudioController {
   }
 
   unlock() {
-    if (!this.context) this.context = new (window.AudioContext || window.webkitAudioContext)();
+    if (!this.context) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        this.enabled = false;
+        return;
+      }
+      try {
+        this.context = new AudioContextClass();
+      } catch (error) {
+        console.warn('Аудио отключено в этом браузере.', error);
+        this.enabled = false;
+        return;
+      }
+    }
     if (this.context.state === 'suspended') this.context.resume();
   }
 
