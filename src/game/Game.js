@@ -3,6 +3,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { InputController } from './InputController.js';
 import { AudioController } from './AudioController.js';
+import { PlayerAppearanceBaseline } from './PlayerAppearanceBaseline.js';
+import { PlayerAnimator } from './FullBodyPlayerAnimator.js';
 import { courseProgress, isNewRecord } from './rules.js';
 
 const MODEL_FILES = [
@@ -59,6 +61,15 @@ export class Game {
     this.hitCooldown = 0;
     this.bounceCooldown = 0;
     this.lastFrame = performance.now();
+    const query = new URLSearchParams(window.location.search);
+    this.playerAnimationReview = query.get('animationReview') === '1';
+    this.playerReferenceMode = query.get('playerReference') === '1' || this.playerAnimationReview;
+    this.playerReferenceView = query.get('view') ?? (this.playerAnimationReview ? 'threequarter' : 'turntable');
+    this.referencePlaybackRate = Number.parseFloat(query.get('speed')) || 1;
+    this.referencePlaybackRate = THREE.MathUtils.clamp(this.referencePlaybackRate, 0.25, 1);
+    this.referencePaused = false;
+    this.referenceSourceLocked = false;
+    this.referenceReviewTime = 0;
     this.animate = this.animate.bind(this);
   }
 
@@ -68,10 +79,16 @@ export class Game {
     this.audio = new AudioController();
     this.renderer.setAnimationLoop(this.animate);
     await this.loadAssets();
-    this.buildLevel();
-    this.state = 'ready';
-    this.callbacks.onReady();
-    this.emitHud();
+    if (this.playerReferenceMode) {
+      this.buildPlayerReferenceStage();
+      this.state = 'player-reference';
+      this.callbacks.onReady({ referenceMode: true });
+    } else {
+      this.buildLevel();
+      this.state = 'ready';
+      this.callbacks.onReady({ referenceMode: false });
+      this.emitHud();
+    }
   }
 
   createScene() {
@@ -88,7 +105,7 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !this.playerReferenceMode;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.container.appendChild(this.renderer.domElement);
 
@@ -96,7 +113,7 @@ export class Game {
     this.scene.add(hemisphere);
     const sun = new THREE.DirectionalLight(0xfff1da, 3.4);
     sun.position.set(-18, 35, 15);
-    sun.castShadow = true;
+    sun.castShadow = !this.playerReferenceMode;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -28;
     sun.shadow.camera.right = 28;
@@ -158,7 +175,11 @@ export class Game {
   }
 
   async loadAssets() {
-    const base = import.meta.env.BASE_URL;
+    const requestedFiles = this.playerReferenceMode ? MODEL_FILES.slice(0, 1) : MODEL_FILES;
+    const referenceAssetBase = new URLSearchParams(window.location.search).get('assetBase');
+    const base = this.playerReferenceMode && referenceAssetBase
+      ? new URL(referenceAssetBase, window.location.href).href
+      : import.meta.env.BASE_URL;
     const draco = new DRACOLoader();
     draco.setDecoderPath(`${base}draco/`);
     draco.setDecoderConfig({ type: 'wasm' });
@@ -166,9 +187,9 @@ export class Game {
     const loader = new GLTFLoader();
     loader.setDRACOLoader(draco);
     let completed = 0;
-    this.callbacks.onProgress({ completed, total: MODEL_FILES.length, label: 'Подготовка моделей...' });
+    this.callbacks.onProgress({ completed, total: requestedFiles.length, label: 'Подготовка моделей...' });
 
-    await Promise.all(MODEL_FILES.map((file, index) => new Promise((resolve) => {
+    await Promise.all(requestedFiles.map((file, index) => new Promise((resolve) => {
       loader.load(
         `${base}models/${file}`,
         (gltf) => {
@@ -184,7 +205,7 @@ export class Game {
       );
     }).finally(() => {
       completed += 1;
-      this.callbacks.onProgress({ completed, total: MODEL_FILES.length, label: `Модель ${completed} из ${MODEL_FILES.length}` });
+      this.callbacks.onProgress({ completed, total: requestedFiles.length, label: `Модель ${completed} из ${requestedFiles.length}` });
     })));
     draco.dispose();
   }
@@ -213,7 +234,11 @@ export class Game {
       if (child.material) {
         child.material = child.material.clone();
         for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap']) {
-          if (child.material[key]) child.material[key].anisotropy = Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
+          if (child.material[key]) {
+            child.material[key].anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+            child.material[key].magFilter = THREE.LinearFilter;
+            child.material[key].minFilter = THREE.LinearMipmapLinearFilter;
+          }
         }
       }
     });
@@ -264,6 +289,165 @@ export class Game {
     this.addFinish();
     this.createPlayer();
     this.createConfetti();
+  }
+
+  buildPlayerReferenceStage() {
+    this.playerReference = this.model(1, 4.8, 'height');
+    this.playerReference.userData.playerAppearanceMode = this.playerAnimationReview
+      ? 'surface-coherent-rig-v3-review'
+      : 'source-locked-reference';
+    this.playerReference.traverse((child) => {
+      if (child.isMesh) child.castShadow = false;
+    });
+    this.scene.add(this.playerReference);
+
+    if (this.playerAnimationReview) {
+      this.referenceCarrier = new THREE.Group();
+      this.scene.add(this.referenceCarrier);
+      this.referenceSpeed = 0;
+      this.referenceWasGrounded = true;
+      this.referenceBadge = document.createElement('div');
+      Object.assign(this.referenceBadge.style, {
+        position: 'fixed', left: '20px', top: '20px', zIndex: '20',
+        padding: '10px 14px', borderRadius: '10px', color: '#e9fcff',
+        background: 'rgba(7,17,38,.82)', border: '1px solid rgba(64,242,255,.55)',
+        font: '700 14px/1.25 Arial, sans-serif', letterSpacing: '.04em',
+        pointerEvents: 'none',
+      });
+      this.referenceBadge.textContent = 'RIG V3 — IDLE / ЖИВАЯ СТОЙКА';
+      document.body.appendChild(this.referenceBadge);
+      this.referenceAnimator = new PlayerAnimator({
+        visual: this.playerReference,
+        carrier: this.referenceCarrier,
+        onStateChange: ({ label }) => {
+          if (!this.referenceSourceLocked) this.referenceBadge.textContent = `RIG V3 — ${label}`;
+        },
+      });
+      this.buildPlayerReferenceControls();
+    }
+
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(4.2, 64),
+      new THREE.MeshStandardMaterial({ color: 0x18294b, roughness: 0.9, metalness: 0 }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.025;
+    floor.receiveShadow = true;
+    this.scene.add(floor);
+
+    const contactShadow = new THREE.Mesh(
+      new THREE.CircleGeometry(1.05, 48),
+      new THREE.MeshBasicMaterial({ color: 0x020611, transparent: true, opacity: 0.34, depthWrite: false }),
+    );
+    contactShadow.rotation.x = -Math.PI / 2;
+    contactShadow.position.y = -0.012;
+    contactShadow.scale.set(1, 0.55, 1);
+    this.scene.add(contactShadow);
+
+    const rim = new THREE.PointLight(COLORS.cyan, 16, 22, 2);
+    rim.position.set(3.8, 4.6, -3.5);
+    this.scene.add(rim);
+    this.camera.position.set(5.6, 3.1, 8.3);
+    this.camera.lookAt(0, 2.25, 0);
+    this.referenceStartedAt = performance.now() / 1000;
+  }
+
+  buildPlayerReferenceControls() {
+    const stats = this.referenceAnimator.rig.mesh.userData.skinning;
+    const panel = document.createElement('div');
+    Object.assign(panel.style, {
+      position: 'fixed', left: '50%', bottom: '18px', zIndex: '21',
+      transform: 'translateX(-50%)', display: 'flex', flexWrap: 'wrap',
+      justifyContent: 'center', gap: '7px', width: 'min(720px, calc(100% - 24px))',
+      padding: '10px', borderRadius: '14px', color: '#d8e8ff',
+      background: 'rgba(7,17,38,.86)', border: '1px solid rgba(64,242,255,.35)',
+      boxShadow: '0 14px 38px rgba(0,0,0,.35)', font: '700 12px/1 Arial, sans-serif',
+    });
+    const note = document.createElement('span');
+    note.textContent = `${stats.stabilizedComponents} UV · ${stats.stabilizedVertices.toLocaleString('ru-RU')} вершин`;
+    Object.assign(note.style, { width: '100%', textAlign: 'center', opacity: '.72', paddingBottom: '2px' });
+    panel.appendChild(note);
+    const buttons = [
+      ['animation', 'АНИМАЦИЯ'], ['source', 'ИСХОДНИК'], ['pause', 'ПАУЗА'],
+      ['speed-half', '0.5×'], ['speed-full', '1×'],
+      ['front', 'ФРОНТ'], ['threequarter', '¾'], ['left', 'БОК'],
+    ];
+    for (const [action, label] of buttons) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.dataset.reviewAction = action;
+      Object.assign(button.style, {
+        border: '1px solid rgba(255,255,255,.16)', borderRadius: '9px',
+        padding: '8px 11px', color: '#f3fbff', background: 'rgba(255,255,255,.07)',
+        cursor: 'pointer', font: 'inherit', touchAction: 'manipulation',
+      });
+      panel.appendChild(button);
+    }
+    panel.addEventListener('click', (event) => {
+      const action = event.target?.dataset?.reviewAction;
+      if (!action) return;
+      if (action === 'animation') {
+        this.referenceSourceLocked = false;
+        this.referencePaused = false;
+        this.referenceReviewTime = 0;
+        this.referenceSpeed = 0;
+        this.referenceAnimator.reset();
+        this.referenceBadge.textContent = 'RIG V3 — IDLE / ЖИВАЯ СТОЙКА';
+      } else if (action === 'source') {
+        this.referenceSourceLocked = true;
+        this.referencePaused = true;
+        this.referenceSpeed = 0;
+        this.referenceAnimator.reset();
+        this.referenceBadge.textContent = 'SOURCE LOCK — ИСХОДНАЯ МОДЕЛЬ БЕЗ ДЕФОРМАЦИИ';
+      } else if (action === 'pause') {
+        this.referencePaused = !this.referencePaused;
+      } else if (action === 'speed-half') this.referencePlaybackRate = 0.5;
+      else if (action === 'speed-full') this.referencePlaybackRate = 1;
+      else this.playerReferenceView = action;
+    });
+    document.body.appendChild(panel);
+    this.referenceControls = panel;
+  }
+
+  updatePlayerReferenceAnimation(dt, elapsed) {
+    const cycle = elapsed % 12;
+    let desiredSpeed = 0;
+    let grounded = true;
+    let verticalVelocity = 0;
+    let hasCargo = false;
+    let turnRate = 0;
+
+    if (cycle >= 1.4 && cycle < 4.2) desiredSpeed = 3.4;
+    else if (cycle >= 4.2 && cycle < 7.1) {
+      desiredSpeed = 8.1;
+      turnRate = cycle > 5.35 && cycle < 6.2 ? 0.58 : 0;
+    } else if (cycle >= 7.9 && cycle < 9.55) {
+      grounded = false;
+      verticalVelocity = cycle < 8.55 ? 7.8 - (cycle - 7.9) * 8.5 : -1.2 - (cycle - 8.55) * 7.2;
+    } else if (cycle >= 10.2) {
+      hasCargo = true;
+      desiredSpeed = cycle >= 10.75 ? 2.8 : 0;
+    }
+
+    this.referenceSpeed = THREE.MathUtils.damp(
+      this.referenceSpeed,
+      desiredSpeed,
+      desiredSpeed > this.referenceSpeed ? 9.5 : 6.5,
+      dt,
+    );
+    if (this.referenceWasGrounded === false && grounded) this.referenceAnimator.triggerLanding(8.4);
+    this.referenceWasGrounded = grounded;
+    this.referenceAnimator.update(dt, elapsed, {
+      planarSpeed: this.referenceSpeed,
+      planarVelocity: new THREE.Vector3(0, 0, this.referenceSpeed),
+      desiredSpeed,
+      maxSpeed: 8.7,
+      grounded,
+      verticalVelocity,
+      hasCargo,
+      turnRate,
+    });
   }
 
   addPlatform(x, z, width, depth, top, material) {
@@ -448,10 +632,11 @@ export class Game {
     const visual = this.model(1, 2.45, 'height');
     group.add(visual);
     const carrier = new THREE.Group();
-    carrier.position.set(0, 1.35, 0.25);
-    group.add(carrier);
     group.position.copy(this.checkpoints[0]);
     this.scene.add(group);
+    // The load proxy lives in world space, so acceleration and turns can make
+    // it lag behind the physics root instead of inheriting movement for free.
+    this.level.add(carrier);
     this.player = {
       group,
       visual,
@@ -462,6 +647,12 @@ export class Game {
       hasCargo: false,
       radius: 0.58,
     };
+    // Rebuild gate 1: keep the exact source GLB visible and playable. The
+    // rejected coordinate-based runtime rig is intentionally outside the
+    // active game path until a manually validated rig replaces it.
+    this.player.animator = new PlayerAppearanceBaseline({ visual, carrier });
+    group.updateWorldMatrix(true, true);
+    this.player.animator.snapCarrierToBody();
   }
 
   createConfetti() {
@@ -501,6 +692,10 @@ export class Game {
     this.player.position.copy(this.checkpoints[0]);
     this.player.group.rotation.set(0, Math.PI, 0);
     this.player.visual.position.set(0, 0, 0);
+    this.player.visual.rotation.set(0, 0, 0);
+    this.player.animator.reset();
+    this.player.group.updateWorldMatrix(true, true);
+    this.player.animator.snapCarrierToBody();
     if (this.cargo.parent) this.cargo.parent.remove(this.cargo);
     this.level.add(this.cargo);
     this.cargo.position.copy(this.cargoStart);
@@ -523,6 +718,22 @@ export class Game {
     const dt = Math.min((now - this.lastFrame) / 1000, 0.034);
     this.lastFrame = now;
     const time = now / 1000;
+
+    if (this.state === 'player-reference') {
+      this.updateWorld(dt, time);
+      if (!this.referencePaused && !this.referenceSourceLocked) {
+        const reviewDt = dt * this.referencePlaybackRate;
+        this.referenceReviewTime += reviewDt;
+        if (this.referenceAnimator) this.updatePlayerReferenceAnimation(reviewDt, this.referenceReviewTime);
+      }
+      const referenceElapsed = this.referenceReviewTime;
+      const fixedAngles = { front: Math.PI, back: 0, left: Math.PI / 2, right: -Math.PI / 2, threequarter: Math.PI * 0.78 };
+      this.playerReference.rotation.y = fixedAngles[this.playerReferenceView]
+        ?? referenceElapsed * 0.32 + Math.PI;
+      this.camera.lookAt(0, 2.25, 0);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
 
     if (this.state !== 'paused') this.updateWorld(dt, time);
     if (this.state === 'paused' && this.input.consumePause()) this.togglePause(false);
@@ -574,7 +785,9 @@ export class Game {
     this.bounceCooldown = Math.max(0, this.bounceCooldown - dt);
     const move = this.input.getMove();
     const speed = this.player.hasCargo ? 7.7 : 8.7;
+    const desiredSpeed = Math.min(1, move.length()) * speed;
     const control = this.player.grounded ? 14 : 4.4;
+    const wasGrounded = this.player.grounded;
     this.player.velocity.x = THREE.MathUtils.damp(this.player.velocity.x, move.x * speed, control, dt);
     this.player.velocity.z = THREE.MathUtils.damp(this.player.velocity.z, move.y * speed, control, dt);
 
@@ -588,22 +801,26 @@ export class Game {
     this.player.velocity.y -= 22 * dt;
     this.player.position.addScaledVector(this.player.velocity, dt);
     const ground = this.groundHeight(this.player.position.x, this.player.position.z, previousY);
+    const landingVelocity = this.player.velocity.y;
     this.player.grounded = false;
     if (ground !== null && this.player.position.y <= ground && previousY >= ground - 0.55 && this.player.velocity.y <= 0) {
       this.player.position.y = ground;
       this.player.velocity.y = 0;
       this.player.grounded = true;
     }
+    if (!wasGrounded && this.player.grounded) this.player.animator.triggerLanding(Math.abs(landingVelocity));
 
     const planarSpeed = Math.hypot(this.player.velocity.x, this.player.velocity.z);
+    let turnRate = 0;
     if (planarSpeed > 0.22) {
+      const previousYaw = this.player.group.rotation.y;
       const targetYaw = Math.atan2(this.player.velocity.x, this.player.velocity.z);
       this.player.group.rotation.y = this.lerpAngle(this.player.group.rotation.y, targetYaw, 1 - Math.exp(-dt * 11));
+      turnRate = Math.atan2(
+        Math.sin(this.player.group.rotation.y - previousYaw),
+        Math.cos(this.player.group.rotation.y - previousYaw),
+      ) / Math.max(dt, 1 / 240);
     }
-    const bob = this.player.grounded && planarSpeed > 0.6 ? Math.sin(time * 12) * 0.055 : 0;
-    this.player.visual.position.y = THREE.MathUtils.damp(this.player.visual.position.y, bob, 14, dt);
-    this.player.visual.rotation.z = THREE.MathUtils.damp(this.player.visual.rotation.z, -this.player.velocity.x * 0.025, 8, dt);
-    this.player.visual.rotation.x = THREE.MathUtils.damp(this.player.visual.rotation.x, this.player.velocity.z * 0.018, 8, dt);
 
     if (!this.player.hasCargo && this.distanceXZ(this.player.position, this.cargo.getWorldPosition(new THREE.Vector3())) < 2.25) {
       this.pickupCargo();
@@ -611,6 +828,17 @@ export class Game {
     this.updateBouncers();
     this.updateHazards();
     this.updateCheckpoints();
+
+    this.player.animator.update(dt, time, {
+      planarSpeed,
+      planarVelocity: this.player.velocity,
+      desiredSpeed,
+      maxSpeed: speed,
+      grounded: this.player.grounded,
+      verticalVelocity: this.player.velocity.y,
+      hasCargo: this.player.hasCargo,
+      turnRate,
+    });
 
     if (this.player.position.y < -10 || Math.abs(this.player.position.x) > 28) this.respawn('Ты упал — возвращаем на чекпоинт');
     if (this.player.position.z < -174.5 && Math.abs(this.player.position.x) < 8) {
@@ -649,6 +877,7 @@ export class Game {
       this.player.velocity.y = Math.max(this.player.velocity.y, 6.4);
       this.player.grounded = false;
       this.hitCooldown = 0.78;
+      this.player.animator.triggerHit();
       this.audio.hit();
       this.callbacks.onToast('ОСТОРОЖНО, УДАР!');
       return;
@@ -669,6 +898,7 @@ export class Game {
 
   pickupCargo() {
     this.player.hasCargo = true;
+    this.player.animator.triggerInteraction('grab');
     this.player.carrier.attach(this.cargo);
     this.cargo.position.set(0, 0.05, 0.18);
     this.cargo.rotation.set(0, Math.PI, 0);
@@ -683,6 +913,9 @@ export class Game {
     this.player.position.copy(point);
     this.player.velocity.set(0, 0, 0);
     this.player.group.rotation.y = Math.PI;
+    this.player.animator.reset();
+    this.player.group.updateWorldMatrix(true, true);
+    this.player.animator.snapCarrierToBody();
     this.hitCooldown = 1;
     this.callbacks.onToast(message);
     this.snapCamera();
@@ -793,4 +1026,3 @@ export class Game {
     return current + delta * amount;
   }
 }
-

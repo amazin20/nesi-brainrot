@@ -1,5 +1,8 @@
 node_modules/
 dist/
 preview_root/
+review-preview/assets/*.map
+review-preview/draco/
+review-preview/models/
 .DS_Store
 *.log
