@@ -41,3 +41,4 @@
 - без `view` — медленный turntable
 
 Режим использует тот же GLTFLoader, Draco decoder, PBR-материал, tone mapping и WebGLRenderer, что и сама игра.
+Параметр `assetBase` разрешён только для review-сборки и задаёт расположение неизменяемого GLB и Draco decoder.
