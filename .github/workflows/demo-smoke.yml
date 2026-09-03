@@ -60,7 +60,7 @@ jobs:
             curl -fsSI "http://127.0.0.1:4173/nesi-brainrot/models/$model" >/dev/null
           done
 
-      - name: Run WebGL level smoke in Chromium
+      - name: Run WebGL gameplay smoke in Chromium
         run: |
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
           test -n "$CHROME"
@@ -73,6 +73,7 @@ jobs:
           const browser = await puppeteer.launch({
             executablePath: process.env.CHROME_PATH,
             headless: true,
+            protocolTimeout: 30000,
             args: [
               '--no-sandbox',
               '--disable-dev-shm-usage',
@@ -83,10 +84,19 @@ jobs:
             ],
           });
 
+          const browserMessages = [];
+          const report = { browserMessages };
+          let page;
+          const capture = async () => page.evaluate(() => ({
+            dataset: { ...document.documentElement.dataset },
+            diagnostics: window.__NESI_DEMO_DIAGNOSTICS__ ?? null,
+            error: window.__NESI_DEMO_ERROR__ ?? null,
+            winScreenActive: document.querySelector('#win-screen')?.classList.contains('screen--active') ?? false,
+          }));
+
           try {
-            const page = await browser.newPage();
+            page = await browser.newPage();
             await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-            const browserMessages = [];
             page.on('console', (message) => {
               const text = `[console:${message.type()}] ${message.text()}`;
               browserMessages.push(text);
@@ -107,31 +117,90 @@ jobs:
               waitUntil: 'domcontentloaded',
               timeout: 30000,
             });
-
             await page.waitForFunction(() => {
               const state = document.documentElement.dataset.runtimeState;
               return state === 'playing' || state === 'error';
             }, { timeout: 90000, polling: 250 });
 
-            const report = await page.evaluate(() => ({
-              dataset: { ...document.documentElement.dataset },
-              diagnostics: window.__NESI_DEMO_DIAGNOSTICS__ ?? null,
-              error: window.__NESI_DEMO_ERROR__ ?? null,
-            }));
-            report.browserMessages = browserMessages;
-
-            fs.writeFileSync('smoke-artifacts/report.json', JSON.stringify(report, null, 2));
-            fs.writeFileSync('smoke-artifacts/demo-dom.html', await page.content());
-            await page.screenshot({ path: 'smoke-artifacts/demo.png', fullPage: true });
-            console.log(JSON.stringify(report, null, 2));
-
-            const data = report.dataset;
+            report.startup = await capture();
+            const data = report.startup.dataset;
             if (data.gameReady !== 'true') throw new Error(`gameReady=${data.gameReady}`);
             if (data.levelSmoke !== 'pass') throw new Error(`levelSmoke=${data.levelSmoke}`);
             if (data.modelsLoaded !== '10') throw new Error(`modelsLoaded=${data.modelsLoaded}`);
             if (data.modelFallbacks !== '0') throw new Error(`modelFallbacks=${data.modelFallbacks}`);
-            if (data.runtimeState !== 'playing') throw new Error(`runtimeState=${data.runtimeState}; ${report.error || ''}`);
+            if (data.runtimeState !== 'playing') throw new Error(`runtimeState=${data.runtimeState}; ${report.startup.error || ''}`);
+
+            const startZ = report.startup.diagnostics?.playerPosition?.z;
+            await page.keyboard.down('KeyW');
+            await page.waitForFunction(
+              () => window.__NESI_DEMO_DIAGNOSTICS__?.isCarrying === true,
+              { timeout: 8000, polling: 100 },
+            );
+            await page.keyboard.up('KeyW');
+            report.pickup = await capture();
+            const pickupZ = report.pickup.diagnostics?.playerPosition?.z;
+            if (!Number.isFinite(startZ) || !Number.isFinite(pickupZ) || pickupZ >= startZ - 1.5) {
+              throw new Error(`keyboard movement did not advance enough: ${startZ} -> ${pickupZ}`);
+            }
+            if (!report.pickup.diagnostics?.isCarrying) throw new Error('cargo pickup did not trigger');
+
+            const baselineY = report.pickup.diagnostics?.playerPosition?.y ?? 0;
+            await page.keyboard.press('Space');
+            await page.waitForFunction(
+              (y) => (window.__NESI_DEMO_DIAGNOSTICS__?.playerPosition?.y ?? y) > y + 0.2,
+              { timeout: 3000, polling: 100 },
+              baselineY,
+            );
+            report.jump = await capture();
+
+            await page.evaluate(() => {
+              const game = window.__NESI_DEMO_GAME__;
+              game.player.position.copy(game.checkpoints[1]);
+              game.player.velocity.set(0, 0, 0);
+            });
+            await page.waitForFunction(
+              () => window.__NESI_DEMO_DIAGNOSTICS__?.checkpointIndex >= 1,
+              { timeout: 3000, polling: 100 },
+            );
+            report.checkpoint1 = await capture();
+
+            await page.evaluate(() => {
+              const game = window.__NESI_DEMO_GAME__;
+              game.player.position.copy(game.checkpoints[2]);
+              game.player.velocity.set(0, 0, 0);
+            });
+            await page.waitForFunction(
+              () => window.__NESI_DEMO_DIAGNOSTICS__?.checkpointIndex >= 2,
+              { timeout: 3000, polling: 100 },
+            );
+            report.checkpoint2 = await capture();
+
+            await page.evaluate(() => {
+              const game = window.__NESI_DEMO_GAME__;
+              game.player.position.set(0, game.checkpoints[2].y, -175.2);
+              game.player.velocity.set(0, 0, 0);
+            });
+            await page.waitForFunction(
+              () => window.__NESI_DEMO_DIAGNOSTICS__?.state === 'won'
+                && document.querySelector('#win-screen')?.classList.contains('screen--active'),
+              { timeout: 5000, polling: 100 },
+            );
+            report.finish = await capture();
+            if (!report.finish.winScreenActive) throw new Error('win screen did not open');
+            if (report.finish.diagnostics?.state !== 'won') throw new Error('game did not enter won state');
+
+            console.log(JSON.stringify(report, null, 2));
+          } catch (error) {
+            report.failure = String(error?.stack || error);
+            if (page) {
+              try { report.failureState = await capture(); } catch {}
+            }
+            throw error;
           } finally {
+            fs.writeFileSync('smoke-artifacts/report.json', JSON.stringify(report, null, 2));
+            if (page) {
+              try { fs.writeFileSync('smoke-artifacts/demo-dom.html', await page.content()); } catch {}
+            }
             await browser.close();
           }
           NODE
