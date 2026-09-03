@@ -62,7 +62,7 @@ jobs:
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
           test -n "$CHROME"
           mkdir -p smoke-artifacts
-          COMMON="--headless=new --no-sandbox --disable-dev-shm-usage --enable-webgl --ignore-gpu-blocklist --use-angle=swiftshader"
+          COMMON="--headless=new --no-sandbox --disable-dev-shm-usage --enable-webgl --ignore-gpu-blocklist --use-angle=swiftshader --enable-unsafe-swiftshader"
           "$CHROME" $COMMON --virtual-time-budget=15000 --window-size=1440,900 \
             --dump-dom "http://127.0.0.1:4173/nesi-brainrot/?smoke=1" \
             > smoke-artifacts/demo-dom.html
