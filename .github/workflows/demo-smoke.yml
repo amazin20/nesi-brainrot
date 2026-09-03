@@ -2,7 +2,7 @@ name: Playable demo smoke
 
 on:
   push:
-    branches: [playable-demo-v1]
+    branches: [main, playable-demo-v1]
   pull_request:
   workflow_dispatch:
 
@@ -24,6 +24,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install browser driver
+        run: npm install --no-save --package-lock=false puppeteer-core@24.16.0
 
       - name: Unit tests and production build
         run: npm run check
@@ -61,19 +64,77 @@ jobs:
         run: |
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
           test -n "$CHROME"
+          export CHROME_PATH="$CHROME"
           mkdir -p smoke-artifacts
-          COMMON="--headless=new --no-sandbox --disable-dev-shm-usage --enable-webgl --ignore-gpu-blocklist --use-angle=swiftshader --enable-unsafe-swiftshader"
-          "$CHROME" $COMMON --virtual-time-budget=15000 --window-size=1440,900 \
-            --dump-dom "http://127.0.0.1:4173/nesi-brainrot/?smoke=1" \
-            > smoke-artifacts/demo-dom.html
-          grep -q 'data-game-ready="true"' smoke-artifacts/demo-dom.html
-          grep -q 'data-level-smoke="pass"' smoke-artifacts/demo-dom.html
-          grep -q 'data-models-loaded="10"' smoke-artifacts/demo-dom.html
-          grep -q 'data-model-fallbacks="0"' smoke-artifacts/demo-dom.html
-          grep -q 'data-runtime-state="playing"' smoke-artifacts/demo-dom.html
-          "$CHROME" $COMMON --virtual-time-budget=9000 --window-size=1440,900 \
-            --screenshot=smoke-artifacts/demo.png \
-            "http://127.0.0.1:4173/nesi-brainrot/?smoke=1"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import puppeteer from 'puppeteer-core';
+
+          const browser = await puppeteer.launch({
+            executablePath: process.env.CHROME_PATH,
+            headless: true,
+            args: [
+              '--no-sandbox',
+              '--disable-dev-shm-usage',
+              '--enable-webgl',
+              '--ignore-gpu-blocklist',
+              '--use-angle=swiftshader',
+              '--enable-unsafe-swiftshader',
+            ],
+          });
+
+          try {
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+            const browserMessages = [];
+            page.on('console', (message) => {
+              const text = `[console:${message.type()}] ${message.text()}`;
+              browserMessages.push(text);
+              console.log(text);
+            });
+            page.on('pageerror', (error) => {
+              const text = `[pageerror] ${error.stack || error}`;
+              browserMessages.push(text);
+              console.error(text);
+            });
+            page.on('requestfailed', (request) => {
+              const text = `[requestfailed] ${request.url()} :: ${request.failure()?.errorText || 'unknown'}`;
+              browserMessages.push(text);
+              console.error(text);
+            });
+
+            await page.goto('http://127.0.0.1:4173/nesi-brainrot/?smoke=1', {
+              waitUntil: 'domcontentloaded',
+              timeout: 30000,
+            });
+
+            await page.waitForFunction(() => {
+              const state = document.documentElement.dataset.runtimeState;
+              return state === 'playing' || state === 'error';
+            }, { timeout: 90000, polling: 250 });
+
+            const report = await page.evaluate(() => ({
+              dataset: { ...document.documentElement.dataset },
+              diagnostics: window.__NESI_DEMO_DIAGNOSTICS__ ?? null,
+              error: window.__NESI_DEMO_ERROR__ ?? null,
+            }));
+            report.browserMessages = browserMessages;
+
+            fs.writeFileSync('smoke-artifacts/report.json', JSON.stringify(report, null, 2));
+            fs.writeFileSync('smoke-artifacts/demo-dom.html', await page.content());
+            await page.screenshot({ path: 'smoke-artifacts/demo.png', fullPage: true });
+            console.log(JSON.stringify(report, null, 2));
+
+            const data = report.dataset;
+            if (data.gameReady !== 'true') throw new Error(`gameReady=${data.gameReady}`);
+            if (data.levelSmoke !== 'pass') throw new Error(`levelSmoke=${data.levelSmoke}`);
+            if (data.modelsLoaded !== '10') throw new Error(`modelsLoaded=${data.modelsLoaded}`);
+            if (data.modelFallbacks !== '0') throw new Error(`modelFallbacks=${data.modelFallbacks}`);
+            if (data.runtimeState !== 'playing') throw new Error(`runtimeState=${data.runtimeState}; ${report.error || ''}`);
+          } finally {
+            await browser.close();
+          }
+          NODE
 
       - name: Upload smoke evidence
         if: always()
