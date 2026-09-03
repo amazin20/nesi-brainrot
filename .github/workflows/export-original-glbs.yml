@@ -1,0 +1,32 @@
+name: Export original GLBs
+
+on:
+  push:
+    branches: [level-from-scratch-v1]
+    paths:
+      - '.github/workflows/export-original-glbs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify exactly ten GLBs
+        shell: bash
+        run: |
+          count=$(find public/models -maxdepth 1 -type f -name '*.glb' | wc -l | tr -d ' ')
+          echo "GLB count: $count"
+          test "$count" = "10"
+          shasum -a 256 public/models/*.glb > public/models/SHA256SUMS.txt
+      - name: Upload original GLBs
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-repository-glbs
+          path: public/models/
+          if-no-files-found: error
+          compression-level: 0
