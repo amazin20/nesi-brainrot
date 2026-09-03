@@ -2,10 +2,7 @@ name: Deploy game to GitHub Pages
 
 on:
   push:
-    # The rebuild branch is an explicit review deployment. It lets the visual
-    # gate run in the real GitHub Pages/WebGL environment without merging the
-    # unapproved animation work into main.
-    branches: [main, player-animation-rebuild-v2]
+    branches: [main, player-animation-rebuild-v2, level-from-scratch-v1]
   workflow_dispatch:
 
 permissions:
@@ -39,7 +36,7 @@ jobs:
         with:
           path: dist
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/level-from-scratch-v1'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
