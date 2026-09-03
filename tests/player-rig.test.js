@@ -82,6 +82,48 @@ test('runtime rig creates a skeleton and bone rotation deforms vertices', () => 
   assert.ok(before.distanceTo(after) > 0.01);
 });
 
+test('runtime rig preserves the exact source appearance in its bind pose', () => {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+    -0.21, 0.03, -0.51,
+    0.19, -0.02, -0.49,
+    0.02, 0.01, -0.72,
+  ], 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute([
+    0, 1, 0,
+    0, 1, 0,
+    0, 1, 0,
+  ], 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute([
+    0, 0,
+    1, 0,
+    0.5, 1,
+  ], 2));
+  geometry.setIndex([0, 1, 2]);
+  const sourcePositions = geometry.getAttribute('position').array.slice();
+  const sourceNormals = geometry.getAttribute('normal').array.slice();
+  const sourceUvs = geometry.getAttribute('uv').array.slice();
+  const sourceIndices = geometry.index.array.slice();
+  const material = new THREE.MeshStandardMaterial({ color: 0x2678ff });
+  const visual = new THREE.Group();
+  visual.add(new THREE.Mesh(geometry, material));
+
+  const rig = createPlayerRig(visual);
+  visual.updateMatrixWorld(true, true);
+  rig.skeleton.update();
+
+  assert.strictEqual(rig.mesh.material, material, 'player material must not be replaced');
+  assert.deepEqual([...rig.mesh.geometry.getAttribute('position').array], [...sourcePositions]);
+  assert.deepEqual([...rig.mesh.geometry.getAttribute('normal').array], [...sourceNormals]);
+  assert.deepEqual([...rig.mesh.geometry.getAttribute('uv').array], [...sourceUvs]);
+  assert.deepEqual([...rig.mesh.geometry.index.array], [...sourceIndices]);
+  for (let vertex = 0; vertex < sourcePositions.length / 3; vertex += 1) {
+    const bindPosition = rig.mesh.getVertexPosition(vertex, new THREE.Vector3());
+    const sourcePosition = new THREE.Vector3().fromArray(sourcePositions, vertex * 3);
+    assert.ok(bindPosition.distanceTo(sourcePosition) < 1e-7, `bind pose changed vertex ${vertex}`);
+  }
+});
+
 test('carry IK reaches both named grip points', () => {
   const { animator, visual } = makeAnimator();
   for (let frame = 0; frame < 30; frame += 1) {
