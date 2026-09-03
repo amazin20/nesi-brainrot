@@ -1,0 +1,158 @@
+name: Render all repository models
+
+on:
+  push:
+    branches: [level-from-scratch-v1]
+    paths:
+      - '.github/workflows/render-all-models.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render-models:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false puppeteer-core@24.16.0
+
+      - name: Build
+        run: npm run build
+
+      - name: Start preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/model-preview.log 2>&1 &
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:4173/nesi-brainrot/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/model-preview.log
+          exit 1
+
+      - name: Render ten GLB models
+        run: |
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME"
+          export CHROME_PATH="$CHROME"
+          mkdir -p model-renders
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import puppeteer from 'puppeteer-core';
+
+          const names = [
+            'model-01-player',
+            'model-02-cargo',
+            'model-03-swing-hammer',
+            'model-04-bounce-block',
+            'model-05-checkpoint',
+            'model-06-finish-flag',
+            'model-07-spin-hammer',
+            'model-08-roller',
+            'model-09-hurdles',
+            'model-10-platform',
+          ];
+
+          const browser = await puppeteer.launch({
+            executablePath: process.env.CHROME_PATH,
+            headless: true,
+            timeout: 60000,
+            protocolTimeout: 60000,
+            args: [
+              '--no-sandbox',
+              '--disable-dev-shm-usage',
+              '--enable-webgl',
+              '--ignore-gpu-blocklist',
+              '--use-angle=swiftshader',
+              '--enable-unsafe-swiftshader',
+              '--disable-background-timer-throttling',
+              '--disable-renderer-backgrounding',
+            ],
+          });
+
+          const page = await browser.newPage();
+          await page.setViewport({ width: 960, height: 960, deviceScaleFactor: 1 });
+          await page.goto('http://127.0.0.1:4173/nesi-brainrot/?smoke=1', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000,
+          });
+          await page.waitForFunction(() => document.documentElement.dataset.runtimeState === 'playing', {
+            timeout: 90000,
+            polling: 250,
+          });
+
+          await page.evaluate(() => {
+            const game = window.__NESI_DEMO_GAME__;
+            if (!game) throw new Error('Game handle is unavailable');
+            game.renderer.setAnimationLoop(null);
+            game.scene.fog = null;
+            game.scene.background.set(0x101a33);
+            for (const child of game.scene.children) {
+              if (!child.isLight) child.visible = false;
+            }
+          });
+
+          const canvas = await page.$('canvas');
+          if (!canvas) throw new Error('WebGL canvas not found');
+
+          const manifest = [];
+          for (let id = 1; id <= 10; id += 1) {
+            const info = await page.evaluate((assetId) => {
+              const game = window.__NESI_DEMO_GAME__;
+              if (game.__modelReview) {
+                game.scene.remove(game.__modelReview);
+                game.__modelReview = null;
+              }
+
+              const review = game.model(assetId, 5, assetId <= 2 ? 'height' : 'max');
+              review.visible = true;
+              review.rotation.y = -0.48;
+              game.scene.add(review);
+              game.__modelReview = review;
+
+              game.camera.position.set(7.2, 4.3, 9.4);
+              game.camera.lookAt(0, 2.35, 0);
+              game.camera.updateProjectionMatrix();
+              game.renderer.render(game.scene, game.camera);
+
+              let meshes = 0;
+              let triangles = 0;
+              review.traverse((node) => {
+                if (!node.isMesh) return;
+                meshes += 1;
+                const geometry = node.geometry;
+                if (geometry?.index) triangles += geometry.index.count / 3;
+                else if (geometry?.attributes?.position) triangles += geometry.attributes.position.count / 3;
+              });
+              return { assetId, meshes, triangles: Math.round(triangles) };
+            }, id);
+
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            const path = `model-renders/${String(id).padStart(2, '0')}-${names[id - 1]}.png`;
+            await canvas.screenshot({ path });
+            manifest.push({ ...info, file: path, model: `${names[id - 1]}.glb` });
+          }
+
+          fs.writeFileSync('model-renders/manifest.json', JSON.stringify(manifest, null, 2));
+          await browser.close();
+          NODE
+
+      - name: Upload model renders
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-glb-model-renders
+          path: model-renders/
+          if-no-files-found: error
