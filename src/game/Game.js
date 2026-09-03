@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { InputController } from './InputController.js';
 import { AudioController } from './AudioController.js';
+import { PlayerAnimator } from './FullBodyPlayerAnimator.js';
 import { courseProgress, isNewRecord } from './rules.js';
 
 const MODEL_FILES = [
@@ -448,10 +449,11 @@ export class Game {
     const visual = this.model(1, 2.45, 'height');
     group.add(visual);
     const carrier = new THREE.Group();
-    carrier.position.set(0, 1.35, 0.25);
-    group.add(carrier);
     group.position.copy(this.checkpoints[0]);
     this.scene.add(group);
+    // The load proxy lives in world space, so acceleration and turns can make
+    // it lag behind the physics root instead of inheriting movement for free.
+    this.level.add(carrier);
     this.player = {
       group,
       visual,
@@ -462,6 +464,9 @@ export class Game {
       hasCargo: false,
       radius: 0.58,
     };
+    this.player.animator = new PlayerAnimator({ visual, carrier });
+    group.updateWorldMatrix(true, true);
+    this.player.animator.snapCarrierToBody();
   }
 
   createConfetti() {
@@ -501,6 +506,10 @@ export class Game {
     this.player.position.copy(this.checkpoints[0]);
     this.player.group.rotation.set(0, Math.PI, 0);
     this.player.visual.position.set(0, 0, 0);
+    this.player.visual.rotation.set(0, 0, 0);
+    this.player.animator.reset();
+    this.player.group.updateWorldMatrix(true, true);
+    this.player.animator.snapCarrierToBody();
     if (this.cargo.parent) this.cargo.parent.remove(this.cargo);
     this.level.add(this.cargo);
     this.cargo.position.copy(this.cargoStart);
@@ -574,7 +583,9 @@ export class Game {
     this.bounceCooldown = Math.max(0, this.bounceCooldown - dt);
     const move = this.input.getMove();
     const speed = this.player.hasCargo ? 7.7 : 8.7;
+    const desiredSpeed = Math.min(1, move.length()) * speed;
     const control = this.player.grounded ? 14 : 4.4;
+    const wasGrounded = this.player.grounded;
     this.player.velocity.x = THREE.MathUtils.damp(this.player.velocity.x, move.x * speed, control, dt);
     this.player.velocity.z = THREE.MathUtils.damp(this.player.velocity.z, move.y * speed, control, dt);
 
@@ -588,22 +599,26 @@ export class Game {
     this.player.velocity.y -= 22 * dt;
     this.player.position.addScaledVector(this.player.velocity, dt);
     const ground = this.groundHeight(this.player.position.x, this.player.position.z, previousY);
+    const landingVelocity = this.player.velocity.y;
     this.player.grounded = false;
     if (ground !== null && this.player.position.y <= ground && previousY >= ground - 0.55 && this.player.velocity.y <= 0) {
       this.player.position.y = ground;
       this.player.velocity.y = 0;
       this.player.grounded = true;
     }
+    if (!wasGrounded && this.player.grounded) this.player.animator.triggerLanding(Math.abs(landingVelocity));
 
     const planarSpeed = Math.hypot(this.player.velocity.x, this.player.velocity.z);
+    let turnRate = 0;
     if (planarSpeed > 0.22) {
+      const previousYaw = this.player.group.rotation.y;
       const targetYaw = Math.atan2(this.player.velocity.x, this.player.velocity.z);
       this.player.group.rotation.y = this.lerpAngle(this.player.group.rotation.y, targetYaw, 1 - Math.exp(-dt * 11));
+      turnRate = Math.atan2(
+        Math.sin(this.player.group.rotation.y - previousYaw),
+        Math.cos(this.player.group.rotation.y - previousYaw),
+      ) / Math.max(dt, 1 / 240);
     }
-    const bob = this.player.grounded && planarSpeed > 0.6 ? Math.sin(time * 12) * 0.055 : 0;
-    this.player.visual.position.y = THREE.MathUtils.damp(this.player.visual.position.y, bob, 14, dt);
-    this.player.visual.rotation.z = THREE.MathUtils.damp(this.player.visual.rotation.z, -this.player.velocity.x * 0.025, 8, dt);
-    this.player.visual.rotation.x = THREE.MathUtils.damp(this.player.visual.rotation.x, this.player.velocity.z * 0.018, 8, dt);
 
     if (!this.player.hasCargo && this.distanceXZ(this.player.position, this.cargo.getWorldPosition(new THREE.Vector3())) < 2.25) {
       this.pickupCargo();
@@ -611,6 +626,17 @@ export class Game {
     this.updateBouncers();
     this.updateHazards();
     this.updateCheckpoints();
+
+    this.player.animator.update(dt, time, {
+      planarSpeed,
+      planarVelocity: this.player.velocity,
+      desiredSpeed,
+      maxSpeed: speed,
+      grounded: this.player.grounded,
+      verticalVelocity: this.player.velocity.y,
+      hasCargo: this.player.hasCargo,
+      turnRate,
+    });
 
     if (this.player.position.y < -10 || Math.abs(this.player.position.x) > 28) this.respawn('Ты упал — возвращаем на чекпоинт');
     if (this.player.position.z < -174.5 && Math.abs(this.player.position.x) < 8) {
@@ -649,6 +675,7 @@ export class Game {
       this.player.velocity.y = Math.max(this.player.velocity.y, 6.4);
       this.player.grounded = false;
       this.hitCooldown = 0.78;
+      this.player.animator.triggerHit();
       this.audio.hit();
       this.callbacks.onToast('ОСТОРОЖНО, УДАР!');
       return;
@@ -669,6 +696,7 @@ export class Game {
 
   pickupCargo() {
     this.player.hasCargo = true;
+    this.player.animator.triggerInteraction('grab');
     this.player.carrier.attach(this.cargo);
     this.cargo.position.set(0, 0.05, 0.18);
     this.cargo.rotation.set(0, Math.PI, 0);
@@ -683,6 +711,9 @@ export class Game {
     this.player.position.copy(point);
     this.player.velocity.set(0, 0, 0);
     this.player.group.rotation.y = Math.PI;
+    this.player.animator.reset();
+    this.player.group.updateWorldMatrix(true, true);
+    this.player.animator.snapCarrierToBody();
     this.hitCooldown = 1;
     this.callbacks.onToast(message);
     this.snapCamera();
@@ -793,4 +824,3 @@ export class Game {
     return current + delta * amount;
   }
 }
-
