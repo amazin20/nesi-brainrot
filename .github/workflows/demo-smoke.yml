@@ -1,0 +1,84 @@
+name: Playable demo smoke
+
+on:
+  push:
+    branches: [playable-demo-v1]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests and production build
+        run: npm run check
+
+      - name: Start production preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/nesi-preview.log 2>&1 &
+          echo $! > /tmp/nesi-preview.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/nesi-brainrot/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/nesi-preview.log
+          exit 1
+
+      - name: Verify all GLB assets are served
+        run: |
+          for model in \
+            model-01-player.glb \
+            model-02-cargo.glb \
+            model-03-swing-hammer.glb \
+            model-04-bounce-block.glb \
+            model-05-checkpoint.glb \
+            model-06-finish-flag.glb \
+            model-07-spin-hammer.glb \
+            model-08-roller.glb \
+            model-09-hurdles.glb \
+            model-10-platform.glb; do
+            curl -fsSI "http://127.0.0.1:4173/nesi-brainrot/models/$model" >/dev/null
+          done
+
+      - name: Run WebGL level smoke in Chromium
+        run: |
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          test -n "$CHROME"
+          mkdir -p smoke-artifacts
+          COMMON="--headless=new --no-sandbox --disable-dev-shm-usage --enable-webgl --ignore-gpu-blocklist --use-angle=swiftshader"
+          "$CHROME" $COMMON --virtual-time-budget=15000 --window-size=1440,900 \
+            --dump-dom "http://127.0.0.1:4173/nesi-brainrot/?smoke=1" \
+            > smoke-artifacts/demo-dom.html
+          grep -q 'data-game-ready="true"' smoke-artifacts/demo-dom.html
+          grep -q 'data-level-smoke="pass"' smoke-artifacts/demo-dom.html
+          grep -q 'data-models-loaded="10"' smoke-artifacts/demo-dom.html
+          grep -q 'data-model-fallbacks="0"' smoke-artifacts/demo-dom.html
+          grep -q 'data-runtime-state="playing"' smoke-artifacts/demo-dom.html
+          "$CHROME" $COMMON --virtual-time-budget=9000 --window-size=1440,900 \
+            --screenshot=smoke-artifacts/demo.png \
+            "http://127.0.0.1:4173/nesi-brainrot/?smoke=1"
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playable-demo-smoke
+          path: smoke-artifacts/
+          if-no-files-found: warn
