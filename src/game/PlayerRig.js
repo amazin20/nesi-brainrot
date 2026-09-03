@@ -142,110 +142,32 @@ export function resolvePlayerSkin(
   return { indices, weights };
 }
 
-function createVertexComponents(geometry, vertexCount) {
-  const parents = new Uint32Array(vertexCount);
-  const ranks = new Uint8Array(vertexCount);
-  for (let vertex = 0; vertex < vertexCount; vertex += 1) parents[vertex] = vertex;
-
-  const find = (start) => {
-    let root = start;
-    while (parents[root] !== root) root = parents[root];
-    let vertex = start;
-    while (parents[vertex] !== vertex) {
-      const next = parents[vertex];
-      parents[vertex] = root;
-      vertex = next;
-    }
-    return root;
-  };
-  const union = (a, b) => {
-    let rootA = find(a);
-    let rootB = find(b);
-    if (rootA === rootB) return;
-    if (ranks[rootA] < ranks[rootB]) [rootA, rootB] = [rootB, rootA];
-    parents[rootB] = rootA;
-    if (ranks[rootA] === ranks[rootB]) ranks[rootA] += 1;
-  };
-
-  const sourceIndex = geometry.getIndex()?.array;
-  if (sourceIndex) {
-    for (let offset = 0; offset + 2 < sourceIndex.length; offset += 3) {
-      union(sourceIndex[offset], sourceIndex[offset + 1]);
-      union(sourceIndex[offset], sourceIndex[offset + 2]);
-    }
-  } else {
-    // A non-indexed mesh stores a separate vertex triplet for every triangle.
-    // Treat each complete triangle as one rigid island rather than allowing its
-    // three corners to receive different bone transforms.
-    for (let vertex = 0; vertex + 2 < vertexCount; vertex += 3) {
-      union(vertex, vertex + 1);
-      union(vertex, vertex + 2);
-    }
-  }
-
-  const componentIds = new Uint32Array(vertexCount);
-  const rootToComponent = new Map();
-  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
-    const root = find(vertex);
-    let component = rootToComponent.get(root);
-    if (component === undefined) {
-      component = rootToComponent.size;
-      rootToComponent.set(root, component);
-    }
-    componentIds[vertex] = component;
-  }
-  return { componentIds, componentCount: rootToComponent.size };
-}
-
 /**
- * Build a shape-preserving runtime skin for the static source mesh.
+ * Add smooth anatomical weights to a cloned geometry.
  *
- * The generated player is made from thousands of disconnected polygon islands.
- * Giving neighbouring vertices independent blended weights makes buckles, hood
- * panels and armour shear apart. Every connected island therefore follows one
- * dominant bone as a rigid unit. Only the authored seams between islands can
- * articulate; positions, topology, normals, UVs and material stay untouched.
+ * The rejected version collapsed each disconnected surface island to one bone.
+ * The source contains 7705 islands, so neighbouring armour and cloth pieces
+ * snapped to different transforms and visibly floated apart. Per-vertex blends
+ * restore continuous deformation while leaving source positions, topology,
+ * normals, UVs and material untouched in the bind pose.
  */
-export function buildShapePreservingSkinAttributes(geometry) {
+export function buildSmoothSkinAttributes(geometry) {
   const position = geometry.getAttribute('position');
   if (!position) throw new Error('Player mesh has no position attribute.');
-  const { componentIds, componentCount } = createVertexComponents(geometry, position.count);
-  const componentScores = Array.from(
-    { length: componentCount },
-    () => new Float64Array(PLAYER_RIG_SPEC.length),
-  );
   const skinIndices = new Uint16Array(position.count * 4);
   const skinWeights = new Float32Array(position.count * 4);
   const indices = new Uint16Array(4);
   const weights = new Float32Array(4);
-
-  // Vote anatomically per vertex, then collapse every connected visual island
-  // to one transform. A single bone matrix is rigid, so it cannot melt or
-  // stretch the island even while the rest of the skeleton is animated.
   for (let vertex = 0; vertex < position.count; vertex += 1) {
     resolvePlayerSkin(position.getX(vertex), position.getY(vertex), position.getZ(vertex), indices, weights);
-    const score = componentScores[componentIds[vertex]];
-    for (let slot = 0; slot < 4; slot += 1) score[indices[slot]] += weights[slot];
-  }
-
-  const componentBones = new Uint16Array(componentCount);
-  for (let component = 0; component < componentCount; component += 1) {
-    const score = componentScores[component];
-    let winner = PLAYER_BONE_INDEX.Root;
-    for (let bone = 1; bone < score.length; bone += 1) {
-      if (score[bone] > score[winner]) winner = bone;
-    }
-    componentBones[component] = winner;
-  }
-
-  for (let vertex = 0; vertex < position.count; vertex += 1) {
     const offset = vertex * 4;
-    skinIndices[offset] = componentBones[componentIds[vertex]];
-    skinWeights[offset] = 1;
+    for (let slot = 0; slot < 4; slot += 1) {
+      skinIndices[offset + slot] = indices[slot];
+      skinWeights[offset + slot] = weights[slot];
+    }
   }
   geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
   geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
-  return { componentCount };
 }
 
 function copyMeshProperties(source, target) {
@@ -273,10 +195,10 @@ export function createPlayerRig(visual) {
   if (!sourceMesh?.parent) throw new Error('Static player mesh was not found.');
 
   const geometry = sourceMesh.geometry.clone();
-  const skinning = buildShapePreservingSkinAttributes(geometry);
+  buildSmoothSkinAttributes(geometry);
   const skinnedMesh = new THREE.SkinnedMesh(geometry, sourceMesh.material);
   copyMeshProperties(sourceMesh, skinnedMesh);
-  skinnedMesh.userData.shapePreservingSkinning = skinning;
+  skinnedMesh.userData.skinProfile = 'smooth-anatomical-v2';
   const parent = sourceMesh.parent;
   const childIndex = parent.children.indexOf(sourceMesh);
   parent.remove(sourceMesh);
