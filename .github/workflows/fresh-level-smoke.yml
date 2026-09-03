@@ -1,0 +1,133 @@
+name: Fresh level browser smoke
+
+on:
+  push:
+    branches: [level-from-scratch-v1]
+    paths:
+      - 'src/game/FreshLevelGame.js'
+      - 'src/freshMain.js'
+      - 'fresh-level.html'
+      - '.github/workflows/fresh-level-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-level-smoke:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci --prefer-offline --no-audit
+          npm install --no-save --package-lock=false puppeteer-core@24.16.0
+      - name: Unit tests
+        run: npm test
+      - name: Start Vite
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm run dev -- --host 127.0.0.1 --port 5173 > fresh-vite.log 2>&1" -PassThru
+          $process.Id | Out-File fresh-vite.pid
+          for ($i = 0; $i -lt 40; $i++) {
+            try {
+              Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5173/nesi-brainrot/fresh-level.html?smoke=1" | Out-Null
+              exit 0
+            } catch { Start-Sleep -Seconds 1 }
+          }
+          Get-Content fresh-vite.log
+          exit 1
+      - name: Run fresh-level gameplay smoke
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path fresh-level-evidence | Out-Null
+          $chromeCandidates = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+          )
+          $chrome = $chromeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $chrome) { throw "Chrome executable not found" }
+          $env:CHROME_PATH = $chrome
+          @'
+          import puppeteer from 'puppeteer-core';
+          import fs from 'node:fs';
+
+          const browser = await puppeteer.launch({
+            executablePath: process.env.CHROME_PATH,
+            headless: true,
+            timeout: 60000,
+            protocolTimeout: 60000,
+            args: [
+              '--no-sandbox','--disable-dev-shm-usage','--enable-webgl','--ignore-gpu-blocklist',
+              '--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling',
+              '--disable-renderer-backgrounding','--user-data-dir=' + process.cwd() + '/fresh-chrome-profile',
+            ],
+          });
+          const page = await browser.newPage();
+          await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+          const messages = [];
+          page.on('console', m => { messages.push(`[${m.type()}] ${m.text()}`); console.log(messages.at(-1)); });
+          page.on('pageerror', e => { messages.push(`[pageerror] ${e.stack || e}`); console.error(messages.at(-1)); });
+          await page.goto('http://127.0.0.1:5173/nesi-brainrot/fresh-level.html?smoke=1', { waitUntil:'domcontentloaded', timeout:30000 });
+          await page.waitForFunction(() => ['playing','error'].includes(document.documentElement.dataset.runtimeState), { timeout:90000, polling:250 });
+          const startup = await page.evaluate(() => ({
+            gameReady: document.documentElement.dataset.gameReady,
+            levelSmoke: document.documentElement.dataset.levelSmoke,
+            runtimeState: document.documentElement.dataset.runtimeState,
+            modelsLoaded: document.documentElement.dataset.modelsLoaded,
+            modelFallbacks: document.documentElement.dataset.modelFallbacks,
+            freshLevel: document.documentElement.dataset.freshLevel,
+            diagnostics: window.__NESI_FRESH_DIAGNOSTICS__ ?? null,
+            error: window.__NESI_FRESH_ERROR__ ?? null,
+          }));
+          if (startup.gameReady !== 'true') throw new Error(`gameReady=${startup.gameReady}`);
+          if (startup.levelSmoke !== 'pass') throw new Error(`levelSmoke=${startup.levelSmoke}: ${JSON.stringify(startup)}`);
+          if (startup.modelsLoaded !== '10' || startup.modelFallbacks !== '0') throw new Error(`models=${startup.modelsLoaded}, fallbacks=${startup.modelFallbacks}`);
+          if (startup.freshLevel !== 'FreshLevelFromScratchV1') throw new Error(`freshLevel=${startup.freshLevel}`);
+
+          const gameplay = await page.evaluate(() => {
+            const game = window.__NESI_FRESH_GAME__;
+            if (!game) throw new Error('Fresh game handle missing');
+            game.renderer.setAnimationLoop(null);
+            const step = (count, t = performance.now()/1000) => { for (let i=0;i<count;i+=1) game.updatePlayer(1/60, t+i/60); };
+            const start = { x:game.player.position.x, y:game.player.position.y, z:game.player.position.z };
+            window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyW',key:'w',bubbles:true}));
+            step(90);
+            window.dispatchEvent(new KeyboardEvent('keyup',{code:'KeyW',key:'w',bubbles:true}));
+            const moved = Math.hypot(game.player.position.x-start.x, game.player.position.z-start.z);
+            const pickedUp = game.player.hasCargo;
+            const cp1 = game.freshCheckpointTriggers[0];
+            game.player.position.copy(cp1); game.player.velocity.set(0,0,0); game.updateCheckpoints();
+            const checkpoint1 = game.checkpointIndex;
+            const cp2 = game.freshCheckpointTriggers[1];
+            game.player.position.copy(cp2); game.player.velocity.set(0,0,0); game.updateCheckpoints();
+            const checkpoint2 = game.checkpointIndex;
+            game.player.position.set(0,0,-176); game.player.velocity.set(0,0,0); game.updatePlayer(1/60, performance.now()/1000);
+            return {
+              moved, pickedUp, checkpoint1, checkpoint2, finishState:game.state,
+              surfaces:game.surfaces.length, hazards:game.hazards.length, bouncers:game.bouncers.length,
+            };
+          });
+          if (gameplay.moved < 1.5) throw new Error(`movement=${gameplay.moved}`);
+          if (!gameplay.pickedUp) throw new Error('cargo pickup failed');
+          if (gameplay.checkpoint1 !== 1 || gameplay.checkpoint2 !== 2) throw new Error(`checkpoint=${gameplay.checkpoint1}/${gameplay.checkpoint2}`);
+          if (gameplay.finishState !== 'won') throw new Error(`finishState=${gameplay.finishState}`);
+          if (gameplay.surfaces !== 14 || gameplay.hazards !== 9 || gameplay.bouncers !== 5) throw new Error(`layout=${JSON.stringify(gameplay)}`);
+          fs.writeFileSync('fresh-level-evidence/report.json', JSON.stringify({startup,gameplay,messages}, null, 2));
+          await page.screenshot({ path:'fresh-level-evidence/fresh-level-finish.png' });
+          await browser.close();
+          console.log(JSON.stringify(gameplay));
+          '@ | node --input-type=module
+      - name: Upload fresh-level evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fresh-level-smoke-evidence
+          path: fresh-level-evidence/
+          if-no-files-found: warn
