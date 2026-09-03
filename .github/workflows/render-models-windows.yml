@@ -1,0 +1,75 @@
+name: Render all models on Windows
+
+on:
+  push:
+    branches: [level-from-scratch-v1]
+    paths:
+      - '.github/workflows/render-models-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render-models-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Start Vite gallery
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm run dev -- --host 127.0.0.1 --port 5173 > vite-gallery.log 2>&1" -PassThru
+          $process.Id | Out-File vite-gallery.pid
+          for ($i = 0; $i -lt 40; $i++) {
+            try {
+              Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5173/nesi-brainrot/model-gallery.html" | Out-Null
+              exit 0
+            } catch {
+              Start-Sleep -Seconds 1
+            }
+          }
+          Get-Content vite-gallery.log
+          exit 1
+
+      - name: Capture real GLB gallery
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path model-renders | Out-Null
+          $chromeCandidates = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+          )
+          $chrome = $chromeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $chrome) { throw "Chrome executable not found" }
+          & $chrome `
+            --headless=new `
+            --disable-gpu-sandbox `
+            --enable-webgl `
+            --ignore-gpu-blocklist `
+            --use-angle=swiftshader `
+            --enable-unsafe-swiftshader `
+            --run-all-compositor-stages-before-draw `
+            --virtual-time-budget=90000 `
+            --window-size=1700,3900 `
+            --hide-scrollbars `
+            --screenshot="$PWD\model-renders\all-models.png" `
+            "http://127.0.0.1:5173/nesi-brainrot/model-gallery.html"
+          if (-not (Test-Path model-renders/all-models.png)) { throw "Screenshot was not created" }
+
+      - name: Upload model renders
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-glb-model-renders-windows
+          path: model-renders/
+          if-no-files-found: error
