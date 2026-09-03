@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Неси Брейнрот — модели репозитория</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #071126; color: #eef8ff; font-family: Arial, sans-serif; }
+    body { padding: 28px; }
+    h1 { margin: 0 0 24px; font-size: 34px; }
+    #gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+    .card { min-height: 690px; padding: 18px; border-radius: 22px; background: #0d1b39; border: 1px solid #27466f; overflow: hidden; }
+    .card h2 { margin: 0 0 12px; font-size: 22px; line-height: 1.25; }
+    .viewport { width: 100%; height: 610px; border-radius: 16px; overflow: hidden; background: #101a33; }
+    canvas { display: block; width: 100%; height: 100%; }
+    #status { margin: 0 0 18px; color: #9ddfff; font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>Все GLB-модели из public/models</h1>
+  <div id="status">Загрузка 10 моделей…</div>
+  <main id="gallery"></main>
+  <script type="module" src="/src/modelGallery.js"></script>
+</body>
+</html>
