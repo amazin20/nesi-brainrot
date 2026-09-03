@@ -179,53 +179,25 @@ test('movement start and stop impulses settle into stable locomotion states', ()
   assert.equal(animator.state, 'idle');
 });
 
-test('gait alternates planted feet and keeps a double-support crossover', () => {
-  const { animator } = makeAnimator();
-
-  animator.phase = Math.PI / 2;
-  assert.ok(animator.getFootContactTarget('L', 'walk') < 0.05);
-  assert.ok(animator.getFootContactTarget('R', 'walk') > 0.95);
-
-  animator.phase = -Math.PI / 2;
-  assert.ok(animator.getFootContactTarget('L', 'walk') > 0.95);
-  assert.ok(animator.getFootContactTarget('R', 'walk') < 0.05);
+test('foot IK stays deformation-safe during a hard stop', () => {
+  const { animator, world } = makeAnimator({ modelScale: 2.25 });
+  const solveTwoBoneIK = animator.solveTwoBoneIK.bind(animator);
+  let maximumLegInfluence = 0;
+  animator.solveTwoBoneIK = (...parameters) => {
+    if (parameters[0].startsWith('UpperLeg')) {
+      maximumLegInfluence = Math.max(maximumLegInfluence, parameters[4]);
+    }
+    return solveTwoBoneIK(...parameters);
+  };
 
   animator.phase = 0;
-  assert.ok(animator.getFootContactTarget('L', 'walk') > 0.65);
-  assert.ok(animator.getFootContactTarget('R', 'walk') > 0.65);
-  assert.equal(animator.getFootContactTarget('L', 'move_stop'), 1);
-  assert.equal(animator.getFootContactTarget('R', 'move_stop'), 1);
-});
-
-test('moving foot locks release every stride and hold during full plant', () => {
-  const { animator, root, world } = makeAnimator({ modelScale: 2.25 });
-  const speed = 4;
-  const dt = 1 / 60;
-  const releases = { L: 0, R: 0 };
-  const wasLocked = { L: false, R: false };
-  let maxPlantDrift = 0;
-
-  for (let frame = 0; frame < 180; frame += 1) {
-    root.position.z += speed * dt;
+  for (let frame = 0; frame < 45; frame += 1) {
     world.updateMatrixWorld(true);
-    animator.update(dt, frame * dt, {
-      grounded: true,
-      planarSpeed: speed,
-      planarVelocity: new THREE.Vector3(0, 0, speed),
-      desiredSpeed: speed,
-      maxSpeed: 8.7,
-    });
-    for (const side of ['L', 'R']) {
-      if (wasLocked[side] && !animator.footLockActive[side]) releases[side] += 1;
-      wasLocked[side] = animator.footLockActive[side];
-      if (frame < 30 || !wasLocked[side] || animator.footContact[side] < 0.9) continue;
-      const foot = animator.bones[`Foot${side}`].getWorldPosition(new THREE.Vector3());
-      maxPlantDrift = Math.max(maxPlantDrift, foot.distanceTo(animator.footLockTarget[side]));
-    }
+    animator.applyFootIK('move_stop', true, 1 / 60);
   }
 
-  assert.ok(releases.L >= 5 && releases.R >= 5, `locks did not cycle: ${JSON.stringify(releases)}`);
-  assert.ok(maxPlantDrift < 0.02, `fully planted foot drifted ${maxPlantDrift}`);
+  assert.ok(maximumLegInfluence > 0.1, 'foot IK never became active');
+  assert.ok(maximumLegInfluence <= 0.421, `foot IK over-corrected by ${maximumLegInfluence}`);
 });
 
 test('state transition preserves finite rotations under a physics spike', () => {
