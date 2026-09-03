@@ -4,6 +4,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { InputController } from './InputController.js';
 import { AudioController } from './AudioController.js';
 import { PlayerAppearanceBaseline } from './PlayerAppearanceBaseline.js';
+import { PlayerAnimator } from './FullBodyPlayerAnimator.js';
 import { courseProgress, isNewRecord } from './rules.js';
 
 const MODEL_FILES = [
@@ -60,8 +61,10 @@ export class Game {
     this.hitCooldown = 0;
     this.bounceCooldown = 0;
     this.lastFrame = performance.now();
-    this.playerReferenceMode = new URLSearchParams(window.location.search).get('playerReference') === '1';
-    this.playerReferenceView = new URLSearchParams(window.location.search).get('view') ?? 'turntable';
+    const query = new URLSearchParams(window.location.search);
+    this.playerAnimationReview = query.get('animationReview') === '1';
+    this.playerReferenceMode = query.get('playerReference') === '1' || this.playerAnimationReview;
+    this.playerReferenceView = query.get('view') ?? (this.playerAnimationReview ? 'threequarter' : 'turntable');
     this.animate = this.animate.bind(this);
   }
 
@@ -281,8 +284,34 @@ export class Game {
 
   buildPlayerReferenceStage() {
     this.playerReference = this.model(1, 4.8, 'height');
-    this.playerReference.userData.playerAppearanceMode = 'source-locked-reference';
+    this.playerReference.userData.playerAppearanceMode = this.playerAnimationReview
+      ? 'smooth-rig-v2-review'
+      : 'source-locked-reference';
     this.scene.add(this.playerReference);
+
+    if (this.playerAnimationReview) {
+      this.referenceCarrier = new THREE.Group();
+      this.scene.add(this.referenceCarrier);
+      this.referenceSpeed = 0;
+      this.referenceWasGrounded = true;
+      this.referenceBadge = document.createElement('div');
+      Object.assign(this.referenceBadge.style, {
+        position: 'fixed', left: '20px', top: '20px', zIndex: '20',
+        padding: '10px 14px', borderRadius: '10px', color: '#e9fcff',
+        background: 'rgba(7,17,38,.82)', border: '1px solid rgba(64,242,255,.55)',
+        font: '700 14px/1.25 Arial, sans-serif', letterSpacing: '.04em',
+        pointerEvents: 'none',
+      });
+      this.referenceBadge.textContent = 'RIG V2 — IDLE / ЖИВАЯ СТОЙКА';
+      document.body.appendChild(this.referenceBadge);
+      this.referenceAnimator = new PlayerAnimator({
+        visual: this.playerReference,
+        carrier: this.referenceCarrier,
+        onStateChange: ({ label }) => {
+          this.referenceBadge.textContent = `RIG V2 — ${label}`;
+        },
+      });
+    }
 
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(4.2, 64),
@@ -299,6 +328,46 @@ export class Game {
     this.camera.position.set(5.6, 3.1, 8.3);
     this.camera.lookAt(0, 2.25, 0);
     this.referenceStartedAt = performance.now() / 1000;
+  }
+
+  updatePlayerReferenceAnimation(dt, elapsed) {
+    const cycle = elapsed % 12;
+    let desiredSpeed = 0;
+    let grounded = true;
+    let verticalVelocity = 0;
+    let hasCargo = false;
+    let turnRate = 0;
+
+    if (cycle >= 1.4 && cycle < 4.2) desiredSpeed = 3.4;
+    else if (cycle >= 4.2 && cycle < 7.1) {
+      desiredSpeed = 8.1;
+      turnRate = cycle > 5.35 && cycle < 6.2 ? 0.58 : 0;
+    } else if (cycle >= 7.9 && cycle < 9.55) {
+      grounded = false;
+      verticalVelocity = cycle < 8.55 ? 7.8 - (cycle - 7.9) * 8.5 : -1.2 - (cycle - 8.55) * 7.2;
+    } else if (cycle >= 10.2) {
+      hasCargo = true;
+      desiredSpeed = cycle >= 10.75 ? 2.8 : 0;
+    }
+
+    this.referenceSpeed = THREE.MathUtils.damp(
+      this.referenceSpeed,
+      desiredSpeed,
+      desiredSpeed > this.referenceSpeed ? 9.5 : 6.5,
+      dt,
+    );
+    if (this.referenceWasGrounded === false && grounded) this.referenceAnimator.triggerLanding(8.4);
+    this.referenceWasGrounded = grounded;
+    this.referenceAnimator.update(dt, elapsed, {
+      planarSpeed: this.referenceSpeed,
+      planarVelocity: new THREE.Vector3(0, 0, this.referenceSpeed),
+      desiredSpeed,
+      maxSpeed: 8.7,
+      grounded,
+      verticalVelocity,
+      hasCargo,
+      turnRate,
+    });
   }
 
   addPlatform(x, z, width, depth, top, material) {
@@ -572,9 +641,11 @@ export class Game {
 
     if (this.state === 'player-reference') {
       this.updateWorld(dt, time);
+      const referenceElapsed = time - this.referenceStartedAt;
+      if (this.referenceAnimator) this.updatePlayerReferenceAnimation(dt, referenceElapsed);
       const fixedAngles = { front: Math.PI, back: 0, left: Math.PI / 2, right: -Math.PI / 2, threequarter: Math.PI * 0.78 };
       this.playerReference.rotation.y = fixedAngles[this.playerReferenceView]
-        ?? (time - this.referenceStartedAt) * 0.32 + Math.PI;
+        ?? referenceElapsed * 0.32 + Math.PI;
       this.camera.lookAt(0, 2.25, 0);
       this.renderer.render(this.scene, this.camera);
       return;
