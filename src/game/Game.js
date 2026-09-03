@@ -167,7 +167,11 @@ export class Game {
   }
 
   async loadAssets() {
-    const base = import.meta.env.BASE_URL;
+    const requestedFiles = this.playerReferenceMode ? MODEL_FILES.slice(0, 1) : MODEL_FILES;
+    const referenceAssetBase = new URLSearchParams(window.location.search).get('assetBase');
+    const base = this.playerReferenceMode && referenceAssetBase
+      ? new URL(referenceAssetBase, window.location.href).href
+      : import.meta.env.BASE_URL;
     const draco = new DRACOLoader();
     draco.setDecoderPath(`${base}draco/`);
     draco.setDecoderConfig({ type: 'wasm' });
@@ -175,9 +179,9 @@ export class Game {
     const loader = new GLTFLoader();
     loader.setDRACOLoader(draco);
     let completed = 0;
-    this.callbacks.onProgress({ completed, total: MODEL_FILES.length, label: 'Подготовка моделей...' });
+    this.callbacks.onProgress({ completed, total: requestedFiles.length, label: 'Подготовка моделей...' });
 
-    await Promise.all(MODEL_FILES.map((file, index) => new Promise((resolve) => {
+    await Promise.all(requestedFiles.map((file, index) => new Promise((resolve) => {
       loader.load(
         `${base}models/${file}`,
         (gltf) => {
@@ -193,7 +197,7 @@ export class Game {
       );
     }).finally(() => {
       completed += 1;
-      this.callbacks.onProgress({ completed, total: MODEL_FILES.length, label: `Модель ${completed} из ${MODEL_FILES.length}` });
+      this.callbacks.onProgress({ completed, total: requestedFiles.length, label: `Модель ${completed} из ${requestedFiles.length}` });
     })));
     draco.dispose();
   }
