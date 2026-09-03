@@ -124,47 +124,25 @@ test('runtime rig preserves the exact source appearance in its bind pose', () =>
   }
 });
 
-test('connected polygon islands stay rigid while their assigned bone animates', () => {
+test('a polygon crossing an anatomical transition receives smooth normalized weights', () => {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-    -0.24, 0.01, -0.34,
-    -0.21, -0.02, -0.48,
-    -0.17, 0.02, -0.64,
-    -0.19, 0.04, -0.51,
+    -0.17, 0.01, -0.64,
+    -0.19, -0.02, -0.61,
+    -0.17, 0.02, -0.58,
   ], 3));
-  geometry.setIndex([0, 1, 3, 1, 2, 3]);
+  geometry.setIndex([0, 1, 2]);
   const visual = new THREE.Group();
   visual.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()));
   const rig = createPlayerRig(visual);
-  const skinIndex = rig.mesh.geometry.getAttribute('skinIndex');
   const skinWeight = rig.mesh.geometry.getAttribute('skinWeight');
-  const assignedBone = skinIndex.getX(0);
-
-  for (let vertex = 0; vertex < 4; vertex += 1) {
-    assert.equal(skinIndex.getX(vertex), assignedBone, `island split at vertex ${vertex}`);
-    assert.deepEqual(
-      [skinWeight.getX(vertex), skinWeight.getY(vertex), skinWeight.getZ(vertex), skinWeight.getW(vertex)],
-      [1, 0, 0, 0],
-    );
-  }
-
-  visual.updateMatrixWorld(true, true);
-  const before = Array.from({ length: 4 }, (_, vertex) => (
-    rig.mesh.getVertexPosition(vertex, new THREE.Vector3()).clone()
-  ));
-  rig.skeleton.bones[assignedBone].rotation.set(0.63, -0.24, 0.31);
-  visual.updateMatrixWorld(true, true);
-  rig.skeleton.update();
-  const after = Array.from({ length: 4 }, (_, vertex) => (
-    rig.mesh.getVertexPosition(vertex, new THREE.Vector3()).clone()
-  ));
-  for (let a = 0; a < 4; a += 1) {
-    for (let b = a + 1; b < 4; b += 1) {
-      assert.ok(
-        Math.abs(before[a].distanceTo(before[b]) - after[a].distanceTo(after[b])) < 1e-6,
-        `rigid island changed shape between vertices ${a} and ${b}`,
-      );
-    }
+  for (let vertex = 0; vertex < 3; vertex += 1) {
+    const weights = [
+      skinWeight.getX(vertex), skinWeight.getY(vertex),
+      skinWeight.getZ(vertex), skinWeight.getW(vertex),
+    ];
+    assert.ok(Math.abs(weights.reduce((sum, weight) => sum + weight, 0) - 1) < 1e-6);
+    assert.ok(weights.filter((weight) => weight > 0).length >= 2, `vertex ${vertex} snapped to one bone`);
   }
 });
 
