@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#08152f" />
+    <meta name="description" content="Неси Брейнрот — новый уровень, собранный с нуля." />
+    <title>Неси Брейнрот — новый уровень с нуля</title>
+  </head>
+  <body>
+    <div id="game"></div>
+    <section id="loading" class="screen screen--active" aria-live="polite"><div class="loading-card glass-card"><span class="eyebrow">НОВЫЙ УРОВЕНЬ С НУЛЯ</span><h1>НЕСИ<br /><em>БРЕЙНРОТ</em></h1><div class="progress-track"><div id="loading-bar" class="progress-fill"></div></div><div class="loading-row"><span id="loading-label">Подготовка...</span><strong id="loading-percent">0%</strong></div></div></section>
+    <section id="start-screen" class="screen" aria-labelledby="game-title"><div class="hero-panel glass-card"><span class="eyebrow">LEVEL FROM SCRATCH V1</span><h1 id="game-title">НЕСИ<br /><em>БРЕЙНРОТ</em></h1><p class="lead">Новая зигзаг-трасса: арена молотов, прыжковый каньон, роллер-шлюз и барьерный серпантин.</p><div class="control-grid"><div><kbd>WASD</kbd><span>движение</span></div><div><kbd>SPACE</kbd><span>прыжок</span></div><div><kbd>R</kbd><span>рестарт</span></div></div><button id="play-button" class="primary-button">НАЧАТЬ НОВЫЙ УРОВЕНЬ <span>→</span></button><p class="mobile-note">На телефоне появятся джойстик и кнопка прыжка</p></div></section>
+    <header id="hud" class="hud" aria-hidden="true"><div class="hud-card objective-card"><span class="hud-label">ЦЕЛЬ</span><strong id="objective">Забери брейнрота</strong><span id="cargo-status" class="cargo-status">ГРУЗ НЕ ПОДОБРАН</span></div><div class="hud-card timer-card"><span class="hud-label">ВРЕМЯ</span><strong id="timer">00:00.000</strong><span id="best-time">РЕКОРД —</span></div><div class="hud-card progress-card"><span class="hud-label">ТРАССА</span><strong><span id="progress-value">0</span>%</strong><div class="mini-progress"><div id="progress-bar"></div></div><span id="checkpoint">ЧЕКПОИНТ 0/2</span></div><button id="pause-button" class="icon-button" aria-label="Пауза">Ⅱ</button></header>
+    <div id="toast" class="toast" role="status"></div>
+    <section id="pause-screen" class="screen"><div class="modal-card glass-card"><span class="eyebrow">ПАУЗА</span><h2>Забег остановлен</h2><button id="resume-button" class="primary-button">ПРОДОЛЖИТЬ</button><button id="restart-button" class="secondary-button">НАЧАТЬ ЗАНОВО</button></div></section>
+    <section id="win-screen" class="screen"><div class="modal-card win-card glass-card"><div class="trophy">★</div><span class="eyebrow">БРЕЙНРОТ ДОСТАВЛЕН</span><h2>ФИНИШ!</h2><div class="result-time" id="result-time">00:00.000</div><p id="record-message">Твой результат сохранён</p><button id="play-again-button" class="primary-button">ЕЩЁ ОДИН ЗАБЕГ</button></div></section>
+    <div id="mobile-controls" class="mobile-controls" aria-hidden="true"><div id="joystick" class="joystick"><div id="joystick-knob"></div></div><button id="jump-button" class="jump-button" aria-label="Прыжок">↑<span>ПРЫЖОК</span></button></div>
+    <script type="module" src="/src/freshMain.js"></script>
+  </body>
+</html>
