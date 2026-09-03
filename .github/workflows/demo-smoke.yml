@@ -60,7 +60,7 @@ jobs:
             curl -fsSI "http://127.0.0.1:4173/nesi-brainrot/models/$model" >/dev/null
           done
 
-      - name: Run WebGL gameplay smoke in Chromium
+      - name: Run deterministic WebGL gameplay smoke in Chromium
         run: |
           CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
           test -n "$CHROME"
@@ -81,6 +81,8 @@ jobs:
               '--ignore-gpu-blocklist',
               '--use-angle=swiftshader',
               '--enable-unsafe-swiftshader',
+              '--disable-background-timer-throttling',
+              '--disable-renderer-backgrounding',
             ],
           });
 
@@ -130,65 +132,70 @@ jobs:
             if (data.modelFallbacks !== '0') throw new Error(`modelFallbacks=${data.modelFallbacks}`);
             if (data.runtimeState !== 'playing') throw new Error(`runtimeState=${data.runtimeState}; ${report.startup.error || ''}`);
 
-            const startZ = report.startup.diagnostics?.playerPosition?.z;
-            await page.keyboard.down('w');
-            await page.waitForFunction(
-              () => window.__NESI_DEMO_DIAGNOSTICS__?.isCarrying === true,
-              { timeout: 8000, polling: 100 },
-            );
-            await page.keyboard.up('w');
-            report.pickup = await capture();
-            const pickupZ = report.pickup.diagnostics?.playerPosition?.z;
-            if (!Number.isFinite(startZ) || !Number.isFinite(pickupZ) || pickupZ >= startZ - 1.5) {
-              throw new Error(`keyboard movement did not advance enough: ${startZ} -> ${pickupZ}`);
-            }
-            if (!report.pickup.diagnostics?.isCarrying) throw new Error('cargo pickup did not trigger');
-
-            const baselineY = report.pickup.diagnostics?.playerPosition?.y ?? 0;
-            await page.keyboard.press('Space');
-            await page.waitForFunction(
-              (y) => (window.__NESI_DEMO_DIAGNOSTICS__?.playerPosition?.y ?? y) > y + 0.2,
-              { timeout: 3000, polling: 100 },
-              baselineY,
-            );
-            report.jump = await capture();
-
-            await page.evaluate(() => {
+            report.gameplay = await page.evaluate(() => {
               const game = window.__NESI_DEMO_GAME__;
+              if (!game) throw new Error('smoke game handle is missing');
+              const step = (count, startTime = performance.now() / 1000) => {
+                for (let i = 0; i < count; i += 1) game.updatePlayer(1 / 60, startTime + i / 60);
+              };
+              const point = () => ({ x: game.player.position.x, y: game.player.position.y, z: game.player.position.z });
+
+              const start = point();
+              window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w', bubbles: true }));
+              const keyboardRegistered = game.input.keys.has('KeyW');
+              step(90);
+              window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW', key: 'w', bubbles: true }));
+              const afterMove = point();
+              const pickedUp = game.player.hasCargo;
+
+              const baselineY = game.player.position.y;
+              window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true }));
+              const jumpQueued = game.input.jumpQueued;
+              step(2);
+              window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ', bubbles: true }));
+              const afterJump = point();
+
               game.player.position.copy(game.checkpoints[1]);
               game.player.velocity.set(0, 0, 0);
-            });
-            await page.waitForFunction(
-              () => window.__NESI_DEMO_DIAGNOSTICS__?.checkpointIndex >= 1,
-              { timeout: 3000, polling: 100 },
-            );
-            report.checkpoint1 = await capture();
+              game.updateCheckpoints();
+              const checkpoint1 = game.checkpointIndex;
 
-            await page.evaluate(() => {
-              const game = window.__NESI_DEMO_GAME__;
               game.player.position.copy(game.checkpoints[2]);
               game.player.velocity.set(0, 0, 0);
-            });
-            await page.waitForFunction(
-              () => window.__NESI_DEMO_DIAGNOSTICS__?.checkpointIndex >= 2,
-              { timeout: 3000, polling: 100 },
-            );
-            report.checkpoint2 = await capture();
+              game.updateCheckpoints();
+              const checkpoint2 = game.checkpointIndex;
 
-            await page.evaluate(() => {
-              const game = window.__NESI_DEMO_GAME__;
               game.player.position.set(0, game.checkpoints[2].y, -175.2);
               game.player.velocity.set(0, 0, 0);
-            });
-            await page.waitForFunction(
-              () => window.__NESI_DEMO_DIAGNOSTICS__?.state === 'won'
-                && document.querySelector('#win-screen')?.classList.contains('screen--active'),
-              { timeout: 5000, polling: 100 },
-            );
-            report.finish = await capture();
-            if (!report.finish.winScreenActive) throw new Error('win screen did not open');
-            if (report.finish.diagnostics?.state !== 'won') throw new Error('game did not enter won state');
+              game.updatePlayer(1 / 60, performance.now() / 1000);
+              const finishState = game.state;
+              const winScreenActive = document.querySelector('#win-screen')?.classList.contains('screen--active') ?? false;
 
+              return {
+                start,
+                keyboardRegistered,
+                afterMove,
+                movedDistanceZ: start.z - afterMove.z,
+                pickedUp,
+                jumpQueued,
+                baselineY,
+                afterJump,
+                checkpoint1,
+                checkpoint2,
+                finishState,
+                winScreenActive,
+              };
+            });
+
+            const game = report.gameplay;
+            if (!game.keyboardRegistered) throw new Error('KeyW did not reach InputController');
+            if (game.movedDistanceZ < 1.5) throw new Error(`movement too small: ${game.movedDistanceZ}`);
+            if (!game.pickedUp) throw new Error('cargo pickup did not trigger');
+            if (!game.jumpQueued || game.afterJump.y <= game.baselineY + 0.1) throw new Error('jump did not trigger');
+            if (game.checkpoint1 < 1 || game.checkpoint2 < 2) throw new Error(`checkpoints failed: ${game.checkpoint1}/${game.checkpoint2}`);
+            if (game.finishState !== 'won' || !game.winScreenActive) throw new Error(`finish failed: ${game.finishState}/${game.winScreenActive}`);
+
+            report.finish = await capture();
             console.log(JSON.stringify(report, null, 2));
           } catch (error) {
             report.failure = String(error?.stack || error);
