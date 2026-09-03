@@ -1,11 +1,12 @@
 import './styles.css';
 import { Game } from './game/Game.js';
+import { PortalGame } from './game/PortalGame.js';
 import { formatTime } from './game/rules.js';
 
 const $ = (selector) => document.querySelector(selector);
 const query = new URLSearchParams(window.location.search);
 const smokeMode = query.get('smoke') === '1';
-
+const portalMode = query.get('mode') === 'portal';
 const elements = {
   game: $('#game'),
   loading: $('#loading'),
@@ -37,6 +38,28 @@ const elements = {
   jumpButton: $('#jump-button'),
 };
 
+if (portalMode) {
+  document.body.classList.add('portal-mode');
+  document.title = 'Brainrot Lab — портальная 3D-демка';
+  document.querySelector('#loading .eyebrow').textContent = 'ЗАГРУЖАЕМ ТЕСТОВУЮ КАМЕРУ';
+  document.querySelector('#loading h1').innerHTML = 'BRAINROT<br /><em>LAB</em>';
+  document.querySelector('#start-screen .eyebrow').textContent = 'ИГРА С ПОРТАЛЬНОЙ ФИЗИКОЙ';
+  elements.start.querySelector('h1').innerHTML = 'BRAINROT<br /><em>LAB</em>';
+  elements.start.querySelector('.lead').textContent = 'Пройди тестовую камеру: свяжи два портала, перенеси брейнрот-куб на платформу и открой выход.';
+  elements.start.querySelector('.control-grid').innerHTML = `
+    <div><kbd>WASD</kbd><span>движение</span></div>
+    <div><kbd>МЫШЬ</kbd><span>обзор</span></div>
+    <div><kbd>ЛКМ / ПКМ</kbd><span>два портала</span></div>
+    <div><kbd>E</kbd><span>взять куб</span></div>
+    <div><kbd>SPACE</kbd><span>прыжок</span></div>
+    <div><kbd>R</kbd><span>заново</span></div>`;
+  elements.play.innerHTML = 'ВОЙТИ В ЛАБОРАТОРИЮ <span>→</span>';
+  elements.start.querySelector('.mobile-note').textContent = 'На ПК кликни по игре, чтобы захватить курсор. Esc — отпустить курсор и поставить паузу.';
+  document.querySelector('#win-screen .eyebrow').textContent = 'ТЕСТОВАЯ КАМЕРА ПРОЙДЕНА';
+  document.querySelector('#win-screen h2').textContent = 'ВЫХОД ОТКРЫТ!';
+  elements.playAgainButton.textContent = 'ПРОЙТИ ЕЩЁ РАЗ';
+}
+
 let toastTimer;
 function showScreen(element, visible) {
   element.classList.toggle('screen--active', visible);
@@ -62,41 +85,49 @@ function publishDemoDiagnostics(game, referenceMode = false) {
   const suspiciousFallbacks = referenceMode
     ? 0
     : assetVertices.filter((vertices) => vertices < 400).length;
-  const playerPosition = game.player?.position
-    ? { x: game.player.position.x, y: game.player.position.y, z: game.player.position.z }
+  const activePlayerPosition = portalMode ? game.playerPosition : game.player?.position;
+  const playerPosition = activePlayerPosition
+    ? { x: activePlayerPosition.x, y: activePlayerPosition.y, z: activePlayerPosition.z }
     : null;
   const report = {
     referenceMode,
+    portalMode,
     state: game.state,
     modelsLoaded: game.assets.size,
     assetVertices,
     suspiciousFallbacks,
-    surfaces: game.surfaces.length,
-    hazards: game.hazards.length,
-    bouncers: game.bouncers.length,
-    checkpoints: game.checkpoints.length,
+    surfaces: game.surfaces?.length ?? game.portalSurfaces?.length ?? 0,
+    hazards: game.hazards?.length ?? game.motions?.length ?? 0,
+    bouncers: game.bouncers?.length ?? 0,
+    checkpoints: game.checkpoints?.length ?? (game.buttonRoot ? 2 : 0),
     checkpointIndex: game.checkpointIndex ?? null,
     playerPosition,
-    isCarrying: Boolean(game.player?.hasCargo),
-    hasLevel: Boolean(game.level),
-    hasPlayer: Boolean(game.player),
-    hasCargoObject: Boolean(game.cargo),
-    hasFinish: Boolean(game.finishGate),
+    isCarrying: Boolean(portalMode ? game.heldCube : game.player?.hasCargo),
+    hasLevel: Boolean(portalMode ? game.world : game.level),
+    hasPlayer: Boolean(portalMode ? game.playerPosition : game.player),
+    hasCargoObject: Boolean(portalMode ? game.cube : game.cargo),
+    hasFinish: Boolean(portalMode ? game.door : game.finishGate),
     winScreenVisible: elements.win.classList.contains('screen--active'),
   };
 
-  const playable = referenceMode || (
-    report.modelsLoaded === 10
-    && report.suspiciousFallbacks === 0
-    && report.surfaces >= 11
-    && report.hazards >= 6
-    && report.bouncers >= 4
-    && report.checkpoints === 3
-    && report.hasLevel
-    && report.hasPlayer
-    && report.hasCargoObject
-    && report.hasFinish
-  );
+  const playable = referenceMode || (portalMode
+    ? report.modelsLoaded === 11
+      && report.suspiciousFallbacks === 0
+      && game.portals?.length === 2
+      && report.hasLevel
+      && report.hasPlayer
+      && report.hasCargoObject
+      && report.hasFinish
+    : report.modelsLoaded === 10
+      && report.suspiciousFallbacks === 0
+      && report.surfaces >= 11
+      && report.hazards >= 6
+      && report.bouncers >= 4
+      && report.checkpoints === 3
+      && report.hasLevel
+      && report.hasPlayer
+      && report.hasCargoObject
+      && report.hasFinish);
 
   document.documentElement.dataset.gameReady = 'true';
   document.documentElement.dataset.levelSmoke = playable ? 'pass' : 'fail';
@@ -109,7 +140,8 @@ function publishDemoDiagnostics(game, referenceMode = false) {
   return report;
 }
 
-const game = new Game({
+const GameMode = portalMode ? PortalGame : Game;
+const game = new GameMode({
   container: elements.game,
   touch: {
     joystick: elements.joystick,
@@ -144,20 +176,24 @@ const game = new Game({
   },
   onHud: ({ elapsed, best, progress, objective, hasCargo, checkpoint }) => {
     elements.timer.textContent = formatTime(elapsed);
-    elements.bestTime.textContent = Number.isFinite(best) ? `РЕКОРД ${formatTime(best)}` : 'РЕКОРД —';
+    elements.bestTime.textContent = portalMode ? 'ТЕСТОВАЯ КАМЕРА 01' : Number.isFinite(best) ? `РЕКОРД ${formatTime(best)}` : 'РЕКОРД —';
     elements.objective.textContent = objective;
-    elements.cargoStatus.textContent = hasCargo ? 'БРЕЙНРОТ У ТЕБЯ' : 'ГРУЗ НЕ ПОДОБРАН';
+    elements.cargoStatus.textContent = portalMode
+      ? (hasCargo ? 'КУБ В РУКАХ' : 'КУБ НЕ В РУКАХ')
+      : (hasCargo ? 'БРЕЙНРОТ У ТЕБЯ' : 'ГРУЗ НЕ ПОДОБРАН');
     elements.cargoStatus.classList.toggle('cargo-status--ok', hasCargo);
     const percent = Math.round(progress * 100);
     elements.progressValue.textContent = String(percent);
     elements.progressBar.style.width = `${percent}%`;
-    elements.checkpoint.textContent = `ЧЕКПОИНТ ${checkpoint}/2`;
+    elements.checkpoint.textContent = portalMode ? `ЭТАП ${checkpoint}/2` : `ЧЕКПОИНТ ${checkpoint}/2`;
   },
   onToast: showToast,
   onPause: (paused) => showScreen(elements.pause, paused),
   onWin: ({ elapsed, newRecord }) => {
     elements.resultTime.textContent = formatTime(elapsed);
-    elements.recordMessage.textContent = newRecord ? 'НОВЫЙ РЕКОРД!' : 'Брейнрот доставлен в целости';
+    elements.recordMessage.textContent = portalMode
+      ? 'Порталы стабильны, брейнрот-куб доставлен'
+      : newRecord ? 'НОВЫЙ РЕКОРД!' : 'Брейнрот доставлен в целости';
     showScreen(elements.win, true);
     elements.mobileControls.classList.remove('mobile-controls--active');
   },

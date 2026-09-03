@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07111f" />
+    <title>Brainrot Lab — модели</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: #ecf7ff;
+        background:
+          radial-gradient(circle at 16% 0%, rgba(50, 153, 255, .19), transparent 31rem),
+          radial-gradient(circle at 86% 3%, rgba(255, 139, 46, .15), transparent 28rem),
+          #07111f;
+      }
+      header {
+        position: sticky;
+        z-index: 2;
+        top: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem clamp(1rem, 4vw, 3rem);
+        border-bottom: 1px solid rgba(255, 255, 255, .1);
+        background: rgba(7, 17, 31, .86);
+        backdrop-filter: blur(18px);
+      }
+      h1 { margin: 0; font-size: clamp(1.15rem, 2.6vw, 1.7rem); letter-spacing: .035em; }
+      header a {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        padding: .7rem 1rem;
+        color: #06101b;
+        border-radius: 999px;
+        background: linear-gradient(115deg, #68c8ff, #d9f5ff);
+        font-size: .9rem;
+        font-weight: 800;
+        text-decoration: none;
+      }
+      main { width: min(1500px, 100%); margin: 0 auto; padding: 2rem clamp(1rem, 4vw, 3rem) 4rem; }
+      .intro { max-width: 68rem; margin: 0 0 1.5rem; color: #a9bed1; font-size: 1rem; line-height: 1.6; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 1rem; }
+      article {
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, .12);
+        border-radius: 18px;
+        background: rgba(13, 28, 47, .82);
+        box-shadow: 0 18px 55px rgba(0, 0, 0, .26);
+      }
+      article img { display: block; width: 100%; aspect-ratio: 9 / 10; object-fit: cover; object-position: top center; background: #14243a; }
+      article div { padding: 1rem; }
+      h2 { margin: 0 0 .3rem; font-size: 1rem; }
+      p { margin: 0; color: #9db4c9; font-size: .9rem; line-height: 1.45; }
+      .blue { color: #67c7ff; }
+      .orange { color: #ffb064; }
+      @media (max-width: 560px) {
+        header { align-items: flex-start; flex-direction: column; }
+        header a { width: 100%; justify-content: center; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1><span class="blue">BRAINROT</span> <span class="orange">LAB</span> / 11 моделей</h1>
+      <a href="./?mode=portal">Открыть 3D-уровень</a>
+    </header>
+    <main>
+      <p class="intro">Все карточки ниже — отдельные снимки реальных GLB-файлов, находящихся в демке. Геометрия моделей не переделывалась.</p>
+      <section class="grid" aria-label="Каталог моделей">
+        <article><img src="./model-screens/model-01.png" alt="Модель 1 — игрок" loading="lazy" /><div><h2>01 · Игрок</h2><p>Исходный персонаж, выставлен в лаборатории как тестовый объект.</p></div></article>
+        <article><img src="./model-screens/model-02.png" alt="Модель 2 — груз" loading="lazy" /><div><h2>02 · Brainrot-куб</h2><p>Физический груз внутри прозрачного куба: его нужно донести до кнопки.</p></div></article>
+        <article><img src="./model-screens/model-03.png" alt="Модель 3 — подвесной молот" loading="lazy" /><div><h2>03 · Подвесной механизм</h2><p>Индустриальный реквизит испытательной камеры.</p></div></article>
+        <article><img src="./model-screens/model-04.png" alt="Модель 4 — кнопка" loading="lazy" /><div><h2>04 · Кнопка</h2><p>Нажимная платформа, открывающая дверь к выходу.</p></div></article>
+        <article><img src="./model-screens/model-05.png" alt="Модель 5 — выходная арка" loading="lazy" /><div><h2>05 · Выходная арка</h2><p>Финальная точка тестовой камеры.</p></div></article>
+        <article><img src="./model-screens/model-06.png" alt="Модель 6 — финишный флаг" loading="lazy" /><div><h2>06 · Финишный флаг</h2><p>Маркер завершения уровня.</p></div></article>
+        <article><img src="./model-screens/model-07.png" alt="Модель 7 — вращающийся механизм" loading="lazy" /><div><h2>07 · Вращающийся механизм</h2><p>Движущаяся деталь оборудования лаборатории.</p></div></article>
+        <article><img src="./model-screens/model-08.png" alt="Модель 8 — ролик" loading="lazy" /><div><h2>08 · Ролик</h2><p>Часть технической зоны камеры.</p></div></article>
+        <article><img src="./model-screens/model-09.png" alt="Модель 9 — ограждения" loading="lazy" /><div><h2>09 · Ограждения</h2><p>Безопасные границы и маршрут игрока.</p></div></article>
+        <article><img src="./model-screens/model-10.png" alt="Модель 10 — платформа" loading="lazy" /><div><h2>10 · Платформа</h2><p>Основа для лабораторных конструкций и пьедесталов.</p></div></article>
+        <article><img src="./model-screens/model-11.png" alt="Модель 11 — портальная пушка" loading="lazy" /><div><h2>11 · Портальная пушка</h2><p>Оружие от первого лица для синего и оранжевого порталов.</p></div></article>
+      </section>
+    </main>
+  </body>
+</html>
