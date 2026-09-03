@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { InputController } from './InputController.js';
 import { AudioController } from './AudioController.js';
-import { PlayerAnimator } from './FullBodyPlayerAnimator.js';
+import { PlayerAppearanceBaseline } from './PlayerAppearanceBaseline.js';
 import { courseProgress, isNewRecord } from './rules.js';
 
 const MODEL_FILES = [
@@ -60,6 +60,8 @@ export class Game {
     this.hitCooldown = 0;
     this.bounceCooldown = 0;
     this.lastFrame = performance.now();
+    this.playerReferenceMode = new URLSearchParams(window.location.search).get('playerReference') === '1';
+    this.playerReferenceView = new URLSearchParams(window.location.search).get('view') ?? 'turntable';
     this.animate = this.animate.bind(this);
   }
 
@@ -69,10 +71,16 @@ export class Game {
     this.audio = new AudioController();
     this.renderer.setAnimationLoop(this.animate);
     await this.loadAssets();
-    this.buildLevel();
-    this.state = 'ready';
-    this.callbacks.onReady();
-    this.emitHud();
+    if (this.playerReferenceMode) {
+      this.buildPlayerReferenceStage();
+      this.state = 'player-reference';
+      this.callbacks.onReady({ referenceMode: true });
+    } else {
+      this.buildLevel();
+      this.state = 'ready';
+      this.callbacks.onReady({ referenceMode: false });
+      this.emitHud();
+    }
   }
 
   createScene() {
@@ -265,6 +273,28 @@ export class Game {
     this.addFinish();
     this.createPlayer();
     this.createConfetti();
+  }
+
+  buildPlayerReferenceStage() {
+    this.playerReference = this.model(1, 4.8, 'height');
+    this.playerReference.userData.playerAppearanceMode = 'source-locked-reference';
+    this.scene.add(this.playerReference);
+
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(4.2, 64),
+      new THREE.MeshStandardMaterial({ color: 0x18294b, roughness: 0.9, metalness: 0 }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.025;
+    floor.receiveShadow = true;
+    this.scene.add(floor);
+
+    const rim = new THREE.PointLight(COLORS.cyan, 16, 22, 2);
+    rim.position.set(3.8, 4.6, -3.5);
+    this.scene.add(rim);
+    this.camera.position.set(5.6, 3.1, 8.3);
+    this.camera.lookAt(0, 2.25, 0);
+    this.referenceStartedAt = performance.now() / 1000;
   }
 
   addPlatform(x, z, width, depth, top, material) {
@@ -464,7 +494,10 @@ export class Game {
       hasCargo: false,
       radius: 0.58,
     };
-    this.player.animator = new PlayerAnimator({ visual, carrier });
+    // Rebuild gate 1: keep the exact source GLB visible and playable. The
+    // rejected coordinate-based runtime rig is intentionally outside the
+    // active game path until a manually validated rig replaces it.
+    this.player.animator = new PlayerAppearanceBaseline({ visual, carrier });
     group.updateWorldMatrix(true, true);
     this.player.animator.snapCarrierToBody();
   }
@@ -532,6 +565,16 @@ export class Game {
     const dt = Math.min((now - this.lastFrame) / 1000, 0.034);
     this.lastFrame = now;
     const time = now / 1000;
+
+    if (this.state === 'player-reference') {
+      this.updateWorld(dt, time);
+      const fixedAngles = { front: Math.PI, back: 0, left: Math.PI / 2, right: -Math.PI / 2, threequarter: Math.PI * 0.78 };
+      this.playerReference.rotation.y = fixedAngles[this.playerReferenceView]
+        ?? (time - this.referenceStartedAt) * 0.32 + Math.PI;
+      this.camera.lookAt(0, 2.25, 0);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
 
     if (this.state !== 'paused') this.updateWorld(dt, time);
     if (this.state === 'paused' && this.input.consumePause()) this.togglePause(false);
