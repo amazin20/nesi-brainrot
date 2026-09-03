@@ -1,0 +1,40 @@
+name: Export Three Draco runtime
+
+on:
+  push:
+    branches: [level-from-scratch-v1]
+    paths:
+      - '.github/workflows/export-three-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-runtime:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install project dependencies
+        run: npm ci --prefer-offline --no-audit
+      - name: Verify Three and Draco
+        run: |
+          test -f node_modules/three/build/three.module.js
+          test -f node_modules/three/examples/jsm/loaders/GLTFLoader.js
+          test -f node_modules/three/examples/jsm/loaders/DRACOLoader.js
+          test -f public/draco/draco_decoder.wasm
+      - name: Upload rendering runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-three-draco-runtime
+          path: |
+            node_modules/three/
+            public/draco/
+          if-no-files-found: error
+          compression-level: 0
