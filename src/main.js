@@ -62,19 +62,27 @@ function publishDemoDiagnostics(game, referenceMode = false) {
   const suspiciousFallbacks = referenceMode
     ? 0
     : assetVertices.filter((vertices) => vertices < 400).length;
+  const playerPosition = game.player?.position
+    ? { x: game.player.position.x, y: game.player.position.y, z: game.player.position.z }
+    : null;
   const report = {
     referenceMode,
     state: game.state,
     modelsLoaded: game.assets.size,
+    assetVertices,
     suspiciousFallbacks,
     surfaces: game.surfaces.length,
     hazards: game.hazards.length,
     bouncers: game.bouncers.length,
     checkpoints: game.checkpoints.length,
+    checkpointIndex: game.checkpointIndex ?? null,
+    playerPosition,
+    isCarrying: Boolean(game.player?.hasCargo),
     hasLevel: Boolean(game.level),
     hasPlayer: Boolean(game.player),
-    hasCargo: Boolean(game.cargo),
+    hasCargoObject: Boolean(game.cargo),
     hasFinish: Boolean(game.finishGate),
+    winScreenVisible: elements.win.classList.contains('screen--active'),
   };
 
   const playable = referenceMode || (
@@ -86,7 +94,7 @@ function publishDemoDiagnostics(game, referenceMode = false) {
     && report.checkpoints === 3
     && report.hasLevel
     && report.hasPlayer
-    && report.hasCargo
+    && report.hasCargoObject
     && report.hasFinish
   );
 
@@ -95,6 +103,8 @@ function publishDemoDiagnostics(game, referenceMode = false) {
   document.documentElement.dataset.runtimeState = report.state;
   document.documentElement.dataset.modelsLoaded = String(report.modelsLoaded);
   document.documentElement.dataset.modelFallbacks = String(report.suspiciousFallbacks);
+  document.documentElement.dataset.isCarrying = String(report.isCarrying);
+  document.documentElement.dataset.checkpointIndex = String(report.checkpointIndex ?? '');
   window.__NESI_DEMO_DIAGNOSTICS__ = report;
   return report;
 }
@@ -121,9 +131,14 @@ const game = new Game({
     }
     publishDemoDiagnostics(game, referenceMode);
     if (smokeMode && !referenceMode) {
+      window.__NESI_DEMO_GAME__ = game;
       window.setTimeout(() => {
         enterGame();
         publishDemoDiagnostics(game, false);
+        window.__NESI_DEMO_DIAGNOSTIC_TIMER__ = window.setInterval(
+          () => publishDemoDiagnostics(game, false),
+          100,
+        );
       }, 80);
     }
   },
