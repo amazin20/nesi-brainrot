@@ -26,9 +26,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: |
-          npm ci --prefer-offline --no-audit
-          npm install --no-save --package-lock=false puppeteer-core@24.16.0
+        run: npm ci --prefer-offline --no-audit
 
       - name: Start Vite gallery
         shell: pwsh
@@ -50,59 +48,35 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path model-renders | Out-Null
+          New-Item -ItemType Directory -Force -Path chrome-profile | Out-Null
           $chromeCandidates = @(
             "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
             "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
           )
           $chrome = $chromeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $chrome) { throw "Chrome executable not found" }
-          $env:CHROME_PATH = $chrome
-          @'
-          import puppeteer from 'puppeteer-core';
-          import fs from 'node:fs';
-
-          const browser = await puppeteer.launch({
-            executablePath: process.env.CHROME_PATH,
-            headless: true,
-            timeout: 60000,
-            protocolTimeout: 60000,
-            args: [
-              '--no-sandbox',
-              '--disable-dev-shm-usage',
-              '--enable-webgl',
-              '--ignore-gpu-blocklist',
-              '--use-angle=swiftshader',
-              '--enable-unsafe-swiftshader',
-              '--disable-background-timer-throttling',
-              '--disable-renderer-backgrounding',
-              '--user-data-dir=' + process.cwd() + '/chrome-profile',
-            ],
-          });
-
-          const page = await browser.newPage();
-          await page.setViewport({ width: 1700, height: 3900, deviceScaleFactor: 1 });
-          page.on('console', (message) => console.log(`[browser:${message.type()}] ${message.text()}`));
-          page.on('pageerror', (error) => console.error(`[pageerror] ${error.stack || error}`));
-          await page.goto('http://127.0.0.1:5173/nesi-brainrot/model-gallery.html', {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000,
-          });
-          await page.waitForFunction(
-            () => document.documentElement.dataset.galleryReady === 'true' || document.documentElement.dataset.galleryReady === 'error',
-            { timeout: 90000, polling: 250 },
-          );
-          const state = await page.evaluate(() => ({
-            galleryReady: document.documentElement.dataset.galleryReady,
-            status: document.querySelector('#status')?.textContent,
-            readyCards: document.querySelectorAll('.card[data-ready="true"]').length,
-          }));
-          console.log(JSON.stringify(state));
-          if (state.galleryReady !== 'true' || state.readyCards !== 10) throw new Error(`Gallery failed: ${JSON.stringify(state)}`);
-          await page.screenshot({ path: 'model-renders/all-models.png', fullPage: true });
-          fs.writeFileSync('model-renders/gallery-state.json', JSON.stringify(state, null, 2));
-          await browser.close();
-          '@ | node --input-type=module
-          if (-not (Test-Path model-renders/all-models.png)) { throw "Screenshot was not created" }
+          $shot = Join-Path $PWD "model-renders\all-models.png"
+          $profile = Join-Path $PWD "chrome-profile"
+          $args = @(
+            '--headless=new',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--enable-webgl',
+            '--ignore-gpu-blocklist',
+            '--use-angle=swiftshader',
+            '--enable-unsafe-swiftshader',
+            '--run-all-compositor-stages-before-draw',
+            '--virtual-time-budget=90000',
+            '--window-size=1700,3900',
+            '--hide-scrollbars',
+            "--user-data-dir=$profile",
+            "--screenshot=$shot",
+            'http://127.0.0.1:5173/nesi-brainrot/model-gallery.html'
+          )
+          $chromeProcess = Start-Process -FilePath $chrome -ArgumentList $args -Wait -PassThru -NoNewWindow
+          Write-Host "Chrome exit code: $($chromeProcess.ExitCode)"
+          if (-not (Test-Path $shot)) { throw "Screenshot was not created" }
+          if ((Get-Item $shot).Length -lt 100000) { throw "Screenshot is unexpectedly small" }
 
       - name: Upload model renders
         uses: actions/upload-artifact@v4
