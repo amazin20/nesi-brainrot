@@ -3,6 +3,9 @@ import { Game } from './game/Game.js';
 import { formatTime } from './game/rules.js';
 
 const $ = (selector) => document.querySelector(selector);
+const query = new URLSearchParams(window.location.search);
+const smokeMode = query.get('smoke') === '1';
+
 const elements = {
   game: $('#game'),
   loading: $('#loading'),
@@ -46,6 +49,56 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => elements.toast.classList.remove('toast--active'), 1900);
 }
 
+function countSceneVertices(scene) {
+  let vertices = 0;
+  scene?.traverse?.((child) => {
+    vertices += child.geometry?.attributes?.position?.count ?? 0;
+  });
+  return vertices;
+}
+
+function publishDemoDiagnostics(game, referenceMode = false) {
+  const assetVertices = [...game.assets.values()].map(countSceneVertices);
+  const suspiciousFallbacks = referenceMode
+    ? 0
+    : assetVertices.filter((vertices) => vertices < 400).length;
+  const report = {
+    referenceMode,
+    state: game.state,
+    modelsLoaded: game.assets.size,
+    suspiciousFallbacks,
+    surfaces: game.surfaces.length,
+    hazards: game.hazards.length,
+    bouncers: game.bouncers.length,
+    checkpoints: game.checkpoints.length,
+    hasLevel: Boolean(game.level),
+    hasPlayer: Boolean(game.player),
+    hasCargo: Boolean(game.cargo),
+    hasFinish: Boolean(game.finishGate),
+  };
+
+  const playable = referenceMode || (
+    report.modelsLoaded === 10
+    && report.suspiciousFallbacks === 0
+    && report.surfaces >= 11
+    && report.hazards >= 6
+    && report.bouncers >= 4
+    && report.checkpoints === 3
+    && report.hasLevel
+    && report.hasPlayer
+    && report.hasCargo
+    && report.hasFinish
+  );
+
+  document.documentElement.dataset.gameReady = 'true';
+  document.documentElement.dataset.levelSmoke = playable ? 'pass' : 'fail';
+  document.documentElement.dataset.runtimeState = report.state;
+  document.documentElement.dataset.modelsLoaded = String(report.modelsLoaded);
+  document.documentElement.dataset.modelFallbacks = String(report.suspiciousFallbacks);
+  window.__NESI_DEMO_DIAGNOSTICS__ = report;
+  return report;
+}
+
 const game = new Game({
   container: elements.game,
   touch: {
@@ -65,6 +118,13 @@ const game = new Game({
     if (referenceMode) {
       elements.hud.classList.remove('hud--active');
       elements.mobileControls.classList.remove('mobile-controls--active');
+    }
+    publishDemoDiagnostics(game, referenceMode);
+    if (smokeMode && !referenceMode) {
+      window.setTimeout(() => {
+        enterGame();
+        publishDemoDiagnostics(game, false);
+      }, 80);
     }
   },
   onHud: ({ elapsed, best, progress, objective, hasCargo, checkpoint }) => {
@@ -109,6 +169,10 @@ elements.restartButton.addEventListener('click', () => {
 
 game.init().catch((error) => {
   console.error(error);
+  document.documentElement.dataset.gameReady = 'false';
+  document.documentElement.dataset.levelSmoke = 'fail';
+  document.documentElement.dataset.runtimeState = 'error';
+  window.__NESI_DEMO_ERROR__ = String(error?.stack || error);
   elements.loadingLabel.textContent = 'Для 3D-игры нужен включённый WebGL. Включи аппаратное ускорение и открой страницу снова.';
   elements.loadingPercent.textContent = '!';
 });
