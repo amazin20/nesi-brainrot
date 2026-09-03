@@ -59,9 +59,13 @@ const game = new Game({
     elements.loadingPercent.textContent = `${percent}%`;
     elements.loadingLabel.textContent = label;
   },
-  onReady: () => {
+  onReady: ({ referenceMode = false } = {}) => {
     showScreen(elements.loading, false);
-    showScreen(elements.start, true);
+    showScreen(elements.start, !referenceMode);
+    if (referenceMode) {
+      elements.hud.classList.remove('hud--active');
+      elements.mobileControls.classList.remove('mobile-controls--active');
+    }
   },
   onHud: ({ elapsed, best, progress, objective, hasCargo, checkpoint }) => {
     elements.timer.textContent = formatTime(elapsed);
