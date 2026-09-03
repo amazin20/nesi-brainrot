@@ -2,7 +2,10 @@ name: Deploy game to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    # The rebuild branch is an explicit review deployment. It lets the visual
+    # gate run in the real GitHub Pages/WebGL environment without merging the
+    # unapproved animation work into main.
+    branches: [main, player-animation-rebuild-v2]
   workflow_dispatch:
 
 permissions:
