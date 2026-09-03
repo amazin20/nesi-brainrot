@@ -131,12 +131,12 @@ jobs:
             if (data.runtimeState !== 'playing') throw new Error(`runtimeState=${data.runtimeState}; ${report.startup.error || ''}`);
 
             const startZ = report.startup.diagnostics?.playerPosition?.z;
-            await page.keyboard.down('KeyW');
+            await page.keyboard.down('w');
             await page.waitForFunction(
               () => window.__NESI_DEMO_DIAGNOSTICS__?.isCarrying === true,
               { timeout: 8000, polling: 100 },
             );
-            await page.keyboard.up('KeyW');
+            await page.keyboard.up('w');
             report.pickup = await capture();
             const pickupZ = report.pickup.diagnostics?.playerPosition?.z;
             if (!Number.isFinite(startZ) || !Number.isFinite(pickupZ) || pickupZ >= startZ - 1.5) {
