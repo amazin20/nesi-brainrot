@@ -142,32 +142,170 @@ export function resolvePlayerSkin(
   return { indices, weights };
 }
 
+function createVertexComponents(geometry, vertexCount) {
+  const parents = new Uint32Array(vertexCount);
+  const ranks = new Uint8Array(vertexCount);
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) parents[vertex] = vertex;
+
+  const find = (start) => {
+    let root = start;
+    while (parents[root] !== root) root = parents[root];
+    let vertex = start;
+    while (parents[vertex] !== vertex) {
+      const next = parents[vertex];
+      parents[vertex] = root;
+      vertex = next;
+    }
+    return root;
+  };
+  const union = (a, b) => {
+    let rootA = find(a);
+    let rootB = find(b);
+    if (rootA === rootB) return;
+    if (ranks[rootA] < ranks[rootB]) [rootA, rootB] = [rootB, rootA];
+    parents[rootB] = rootA;
+    if (ranks[rootA] === ranks[rootB]) ranks[rootA] += 1;
+  };
+
+  const sourceIndex = geometry.getIndex()?.array;
+  if (sourceIndex) {
+    for (let offset = 0; offset + 2 < sourceIndex.length; offset += 3) {
+      union(sourceIndex[offset], sourceIndex[offset + 1]);
+      union(sourceIndex[offset], sourceIndex[offset + 2]);
+    }
+  } else {
+    for (let vertex = 0; vertex + 2 < vertexCount; vertex += 3) {
+      union(vertex, vertex + 1);
+      union(vertex, vertex + 2);
+    }
+  }
+
+  const componentIds = new Uint32Array(vertexCount);
+  const rootToComponent = new Map();
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const root = find(vertex);
+    let component = rootToComponent.get(root);
+    if (component === undefined) {
+      component = rootToComponent.size;
+      rootToComponent.set(root, component);
+    }
+    componentIds[vertex] = component;
+  }
+  return { componentIds, componentCount: rootToComponent.size };
+}
+
+const writeTopInfluences = (scores, indices, weights) => {
+  const strongest = [];
+  for (let bone = 0; bone < scores.length; bone += 1) {
+    if (scores[bone] > 1e-8) strongest.push([bone, scores[bone]]);
+  }
+  strongest.sort((a, b) => b[1] - a[1]);
+  clearInfluences(indices, weights);
+  const selected = strongest.slice(0, 4);
+  let total = selected.reduce((sum, entry) => sum + entry[1], 0);
+  if (total <= 1e-8) {
+    indices[0] = PLAYER_BONE_INDEX.Root;
+    weights[0] = 1;
+    return;
+  }
+  for (let slot = 0; slot < selected.length; slot += 1) {
+    indices[slot] = selected[slot][0];
+    weights[slot] = selected[slot][1] / total;
+  }
+};
+
 /**
- * Add smooth anatomical weights to a cloned geometry.
+ * Add surface-coherent anatomical weights to a cloned geometry.
  *
- * The rejected version collapsed each disconnected surface island to one bone.
- * The source contains 7705 islands, so neighbouring armour and cloth pieces
- * snapped to different transforms and visibly floated apart. Per-vertex blends
- * restore continuous deformation while leaving source positions, topology,
- * normals, UVs and material untouched in the bind pose.
+ * The source contains 7705 disconnected surface islands. Pure per-vertex
+ * weights can shear the many tiny textured details; collapsing every island to
+ * one bone makes adjacent armour pieces separate. Small islands therefore share
+ * one smooth multi-bone weight vector, while larger surfaces keep anatomical
+ * per-vertex gradients across joints. The bind pose geometry and UVs are never
+ * modified.
  */
 export function buildSmoothSkinAttributes(geometry) {
   const position = geometry.getAttribute('position');
   if (!position) throw new Error('Player mesh has no position attribute.');
+  const { componentIds, componentCount } = createVertexComponents(geometry, position.count);
   const skinIndices = new Uint16Array(position.count * 4);
   const skinWeights = new Float32Array(position.count * 4);
+  const componentScores = Array.from(
+    { length: componentCount },
+    () => new Float64Array(PLAYER_RIG_SPEC.length),
+  );
+  const componentCounts = new Uint32Array(componentCount);
+  const componentMins = new Float32Array(componentCount * 3).fill(Infinity);
+  const componentMaxs = new Float32Array(componentCount * 3).fill(-Infinity);
   const indices = new Uint16Array(4);
   const weights = new Float32Array(4);
+
+  // First keep the continuous anatomical solution for all large body surfaces.
+  // At the same time accumulate a stable shared solution for tiny visual parts.
   for (let vertex = 0; vertex < position.count; vertex += 1) {
-    resolvePlayerSkin(position.getX(vertex), position.getY(vertex), position.getZ(vertex), indices, weights);
+    const x = position.getX(vertex);
+    const y = position.getY(vertex);
+    const z = position.getZ(vertex);
+    resolvePlayerSkin(x, y, z, indices, weights);
     const offset = vertex * 4;
     for (let slot = 0; slot < 4; slot += 1) {
       skinIndices[offset + slot] = indices[slot];
       skinWeights[offset + slot] = weights[slot];
+      componentScores[componentIds[vertex]][indices[slot]] += weights[slot];
+    }
+    const component = componentIds[vertex];
+    componentCounts[component] += 1;
+    const componentOffset = component * 3;
+    componentMins[componentOffset] = Math.min(componentMins[componentOffset], x);
+    componentMins[componentOffset + 1] = Math.min(componentMins[componentOffset + 1], y);
+    componentMins[componentOffset + 2] = Math.min(componentMins[componentOffset + 2], z);
+    componentMaxs[componentOffset] = Math.max(componentMaxs[componentOffset], x);
+    componentMaxs[componentOffset + 1] = Math.max(componentMaxs[componentOffset + 1], y);
+    componentMaxs[componentOffset + 2] = Math.max(componentMaxs[componentOffset + 2], z);
+  }
+
+  const stableIndices = new Uint16Array(componentCount * 4);
+  const stableWeights = new Float32Array(componentCount * 4);
+  const coherent = new Uint8Array(componentCount);
+  let stabilizedComponents = 0;
+  let stabilizedVertices = 0;
+  for (let component = 0; component < componentCount; component += 1) {
+    const offset = component * 3;
+    const maxExtent = Math.max(
+      componentMaxs[offset] - componentMins[offset],
+      componentMaxs[offset + 1] - componentMins[offset + 1],
+      componentMaxs[offset + 2] - componentMins[offset + 2],
+    );
+    // Roughly a hand-sized patch or smaller in source space. Larger clothing and
+    // body surfaces still need a gradient to bend naturally across a joint.
+    if (componentCounts[component] > 256 || maxExtent > 0.055) continue;
+    coherent[component] = 1;
+    stabilizedComponents += 1;
+    stabilizedVertices += componentCounts[component];
+    writeTopInfluences(componentScores[component], indices, weights);
+    const stableOffset = component * 4;
+    for (let slot = 0; slot < 4; slot += 1) {
+      stableIndices[stableOffset + slot] = indices[slot];
+      stableWeights[stableOffset + slot] = weights[slot];
+    }
+  }
+
+  // Uniform multi-bone weights apply one coherent affine transform to every
+  // vertex of a tiny island, preventing local UV crawling without snapping the
+  // island to a single bone.
+  for (let vertex = 0; vertex < position.count; vertex += 1) {
+    const component = componentIds[vertex];
+    if (!coherent[component]) continue;
+    const offset = vertex * 4;
+    const stableOffset = component * 4;
+    for (let slot = 0; slot < 4; slot += 1) {
+      skinIndices[offset + slot] = stableIndices[stableOffset + slot];
+      skinWeights[offset + slot] = stableWeights[stableOffset + slot];
     }
   }
   geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
   geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+  return { componentCount, stabilizedComponents, stabilizedVertices };
 }
 
 function copyMeshProperties(source, target) {
@@ -195,10 +333,11 @@ export function createPlayerRig(visual) {
   if (!sourceMesh?.parent) throw new Error('Static player mesh was not found.');
 
   const geometry = sourceMesh.geometry.clone();
-  buildSmoothSkinAttributes(geometry);
+  const skinning = buildSmoothSkinAttributes(geometry);
   const skinnedMesh = new THREE.SkinnedMesh(geometry, sourceMesh.material);
   copyMeshProperties(sourceMesh, skinnedMesh);
-  skinnedMesh.userData.skinProfile = 'smooth-anatomical-v2';
+  skinnedMesh.userData.skinProfile = 'surface-coherent-anatomical-v3';
+  skinnedMesh.userData.skinning = skinning;
   const parent = sourceMesh.parent;
   const childIndex = parent.children.indexOf(sourceMesh);
   parent.remove(sourceMesh);

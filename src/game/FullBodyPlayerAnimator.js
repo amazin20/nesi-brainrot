@@ -90,12 +90,12 @@ class ScalarSpring {
 }
 
 const SPRING_TUNING = Object.freeze({
-  Pelvis: [18, 0.92], Spine: [17, 0.92], Chest: [16, 0.9], Neck: [14, 0.86], Head: [13, 0.82],
-  EarL: [7.2, 0.58], EarR: [7.6, 0.6], Cape: [6.2, 0.66],
-  UpperArmL: [18, 0.86], LowerArmL: [20, 0.88], HandL: [18, 0.82],
-  UpperArmR: [18, 0.86], LowerArmR: [20, 0.88], HandR: [18, 0.82],
-  UpperLegL: [22, 0.94], LowerLegL: [24, 0.96], FootL: [23, 0.94],
-  UpperLegR: [22, 0.94], LowerLegR: [24, 0.96], FootR: [23, 0.94],
+  Pelvis: [17, 0.97], Spine: [16, 0.97], Chest: [15, 0.96], Neck: [13, 0.94], Head: [12, 0.93],
+  EarL: [6.8, 0.84], EarR: [7, 0.85], Cape: [5.7, 0.86],
+  UpperArmL: [17, 0.94], LowerArmL: [19, 0.95], HandL: [17, 0.93],
+  UpperArmR: [17, 0.94], LowerArmR: [19, 0.95], HandR: [17, 0.93],
+  UpperLegL: [21, 0.98], LowerLegL: [22, 0.99], FootL: [21, 0.98],
+  UpperLegR: [21, 0.98], LowerLegR: [22, 0.99], FootR: [21, 0.98],
 });
 
 const TRANSITION_DURATION = Object.freeze({
@@ -106,7 +106,7 @@ const TRANSITION_DURATION = Object.freeze({
 });
 
 const INTERACTION_DURATION = Object.freeze({ grab: 0.72, pull: 0.92, push: 0.82, throw: 0.9 });
-const FOOT_IK_MAX_INFLUENCE = 0.42;
+const FOOT_IK_MAX_INFLUENCE = 0.34;
 
 const POSE_LIMITS = Object.freeze({
   Pelvis: [[-0.55, 0.55], [-0.5, 0.5], [-0.55, 0.55]],
@@ -534,14 +534,14 @@ export class PlayerAnimator {
   }
 
   applySecondaryPhysics(time, speedRatio, verticalVelocity, turnRate) {
-    const forwardLag = THREE.MathUtils.clamp(this.forwardAcceleration / 28, -0.28, 0.28);
-    const sideLag = THREE.MathUtils.clamp(this.lateralAcceleration / 30, -0.24, 0.24);
-    const airLag = THREE.MathUtils.clamp(verticalVelocity / 12, -0.22, 0.22);
-    const flutter = Math.sin(time * 5.2 + this.phase * 0.18) * (0.025 + speedRatio * 0.035);
+    const forwardLag = THREE.MathUtils.clamp(this.forwardAcceleration / 30, -0.22, 0.22);
+    const sideLag = THREE.MathUtils.clamp(this.lateralAcceleration / 32, -0.18, 0.18);
+    const airLag = THREE.MathUtils.clamp(verticalVelocity / 13, -0.18, 0.18);
+    const flutter = Math.sin(time * 4.4 + this.phase * 0.14) * (0.018 + speedRatio * 0.024);
     this.setRotation('EarL', 0.05 + forwardLag + airLag + flutter, sideLag * 0.18, 0.045 + turnRate * 0.025);
     this.setRotation('EarR', 0.035 + forwardLag * 0.92 + airLag - flutter, sideLag * 0.18, -0.045 + turnRate * 0.025);
     this.setRotation('Cape', speedRatio * 0.34 - forwardLag * 0.65 - airLag * 0.42,
-      -turnRate * 0.045 + sideLag * 0.2, Math.sin(time * 3.7) * speedRatio * 0.055);
+      -turnRate * 0.04 + sideLag * 0.18, Math.sin(time * 3.2) * speedRatio * 0.038);
   }
 
   clampAndBlendPose() {

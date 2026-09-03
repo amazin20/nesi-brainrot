@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   PLAYER_BONE_INDEX,
   PLAYER_RIG_SPEC,
+  buildSmoothSkinAttributes,
   createPlayerRig,
   resolvePlayerSkin,
 } from '../src/game/PlayerRig.js';
@@ -124,25 +125,39 @@ test('runtime rig preserves the exact source appearance in its bind pose', () =>
   }
 });
 
-test('a polygon crossing an anatomical transition receives smooth normalized weights', () => {
+test('a small textured island receives coherent smooth normalized weights', () => {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute([
     -0.17, 0.01, -0.64,
     -0.19, -0.02, -0.61,
-    -0.17, 0.02, -0.58,
+    -0.17, 0.02, -0.60,
   ], 3));
   geometry.setIndex([0, 1, 2]);
-  const visual = new THREE.Group();
-  visual.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()));
-  const rig = createPlayerRig(visual);
-  const skinWeight = rig.mesh.geometry.getAttribute('skinWeight');
+  const skinning = buildSmoothSkinAttributes(geometry);
+  const skinIndex = geometry.getAttribute('skinIndex');
+  const skinWeight = geometry.getAttribute('skinWeight');
+  assert.equal(skinning.componentCount, 1);
+  assert.equal(skinning.stabilizedComponents, 1);
+  assert.equal(skinning.stabilizedVertices, 3);
+  const referenceIndices = [
+    skinIndex.getX(0), skinIndex.getY(0), skinIndex.getZ(0), skinIndex.getW(0),
+  ];
+  const referenceWeights = [
+    skinWeight.getX(0), skinWeight.getY(0), skinWeight.getZ(0), skinWeight.getW(0),
+  ];
   for (let vertex = 0; vertex < 3; vertex += 1) {
+    const indices = [
+      skinIndex.getX(vertex), skinIndex.getY(vertex),
+      skinIndex.getZ(vertex), skinIndex.getW(vertex),
+    ];
     const weights = [
       skinWeight.getX(vertex), skinWeight.getY(vertex),
       skinWeight.getZ(vertex), skinWeight.getW(vertex),
     ];
     assert.ok(Math.abs(weights.reduce((sum, weight) => sum + weight, 0) - 1) < 1e-6);
     assert.ok(weights.filter((weight) => weight > 0).length >= 2, `vertex ${vertex} snapped to one bone`);
+    assert.deepEqual(indices, referenceIndices, `vertex ${vertex} changed the island bone set`);
+    assert.deepEqual(weights, referenceWeights, `vertex ${vertex} would crawl inside its UV island`);
   }
 });
 

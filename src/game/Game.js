@@ -65,6 +65,11 @@ export class Game {
     this.playerAnimationReview = query.get('animationReview') === '1';
     this.playerReferenceMode = query.get('playerReference') === '1' || this.playerAnimationReview;
     this.playerReferenceView = query.get('view') ?? (this.playerAnimationReview ? 'threequarter' : 'turntable');
+    this.referencePlaybackRate = Number.parseFloat(query.get('speed')) || 1;
+    this.referencePlaybackRate = THREE.MathUtils.clamp(this.referencePlaybackRate, 0.25, 1);
+    this.referencePaused = false;
+    this.referenceSourceLocked = false;
+    this.referenceReviewTime = 0;
     this.animate = this.animate.bind(this);
   }
 
@@ -100,7 +105,7 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !this.playerReferenceMode;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.container.appendChild(this.renderer.domElement);
 
@@ -108,7 +113,7 @@ export class Game {
     this.scene.add(hemisphere);
     const sun = new THREE.DirectionalLight(0xfff1da, 3.4);
     sun.position.set(-18, 35, 15);
-    sun.castShadow = true;
+    sun.castShadow = !this.playerReferenceMode;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -28;
     sun.shadow.camera.right = 28;
@@ -229,7 +234,11 @@ export class Game {
       if (child.material) {
         child.material = child.material.clone();
         for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap']) {
-          if (child.material[key]) child.material[key].anisotropy = Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
+          if (child.material[key]) {
+            child.material[key].anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+            child.material[key].magFilter = THREE.LinearFilter;
+            child.material[key].minFilter = THREE.LinearMipmapLinearFilter;
+          }
         }
       }
     });
@@ -285,8 +294,11 @@ export class Game {
   buildPlayerReferenceStage() {
     this.playerReference = this.model(1, 4.8, 'height');
     this.playerReference.userData.playerAppearanceMode = this.playerAnimationReview
-      ? 'smooth-rig-v2-review'
+      ? 'surface-coherent-rig-v3-review'
       : 'source-locked-reference';
+    this.playerReference.traverse((child) => {
+      if (child.isMesh) child.castShadow = false;
+    });
     this.scene.add(this.playerReference);
 
     if (this.playerAnimationReview) {
@@ -302,15 +314,16 @@ export class Game {
         font: '700 14px/1.25 Arial, sans-serif', letterSpacing: '.04em',
         pointerEvents: 'none',
       });
-      this.referenceBadge.textContent = 'RIG V2 — IDLE / ЖИВАЯ СТОЙКА';
+      this.referenceBadge.textContent = 'RIG V3 — IDLE / ЖИВАЯ СТОЙКА';
       document.body.appendChild(this.referenceBadge);
       this.referenceAnimator = new PlayerAnimator({
         visual: this.playerReference,
         carrier: this.referenceCarrier,
         onStateChange: ({ label }) => {
-          this.referenceBadge.textContent = `RIG V2 — ${label}`;
+          if (!this.referenceSourceLocked) this.referenceBadge.textContent = `RIG V3 — ${label}`;
         },
       });
+      this.buildPlayerReferenceControls();
     }
 
     const floor = new THREE.Mesh(
@@ -322,12 +335,79 @@ export class Game {
     floor.receiveShadow = true;
     this.scene.add(floor);
 
+    const contactShadow = new THREE.Mesh(
+      new THREE.CircleGeometry(1.05, 48),
+      new THREE.MeshBasicMaterial({ color: 0x020611, transparent: true, opacity: 0.34, depthWrite: false }),
+    );
+    contactShadow.rotation.x = -Math.PI / 2;
+    contactShadow.position.y = -0.012;
+    contactShadow.scale.set(1, 0.55, 1);
+    this.scene.add(contactShadow);
+
     const rim = new THREE.PointLight(COLORS.cyan, 16, 22, 2);
     rim.position.set(3.8, 4.6, -3.5);
     this.scene.add(rim);
     this.camera.position.set(5.6, 3.1, 8.3);
     this.camera.lookAt(0, 2.25, 0);
     this.referenceStartedAt = performance.now() / 1000;
+  }
+
+  buildPlayerReferenceControls() {
+    const stats = this.referenceAnimator.rig.mesh.userData.skinning;
+    const panel = document.createElement('div');
+    Object.assign(panel.style, {
+      position: 'fixed', left: '50%', bottom: '18px', zIndex: '21',
+      transform: 'translateX(-50%)', display: 'flex', flexWrap: 'wrap',
+      justifyContent: 'center', gap: '7px', width: 'min(720px, calc(100% - 24px))',
+      padding: '10px', borderRadius: '14px', color: '#d8e8ff',
+      background: 'rgba(7,17,38,.86)', border: '1px solid rgba(64,242,255,.35)',
+      boxShadow: '0 14px 38px rgba(0,0,0,.35)', font: '700 12px/1 Arial, sans-serif',
+    });
+    const note = document.createElement('span');
+    note.textContent = `${stats.stabilizedComponents} UV · ${stats.stabilizedVertices.toLocaleString('ru-RU')} вершин`;
+    Object.assign(note.style, { width: '100%', textAlign: 'center', opacity: '.72', paddingBottom: '2px' });
+    panel.appendChild(note);
+    const buttons = [
+      ['animation', 'АНИМАЦИЯ'], ['source', 'ИСХОДНИК'], ['pause', 'ПАУЗА'],
+      ['speed-half', '0.5×'], ['speed-full', '1×'],
+      ['front', 'ФРОНТ'], ['threequarter', '¾'], ['left', 'БОК'],
+    ];
+    for (const [action, label] of buttons) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.dataset.reviewAction = action;
+      Object.assign(button.style, {
+        border: '1px solid rgba(255,255,255,.16)', borderRadius: '9px',
+        padding: '8px 11px', color: '#f3fbff', background: 'rgba(255,255,255,.07)',
+        cursor: 'pointer', font: 'inherit', touchAction: 'manipulation',
+      });
+      panel.appendChild(button);
+    }
+    panel.addEventListener('click', (event) => {
+      const action = event.target?.dataset?.reviewAction;
+      if (!action) return;
+      if (action === 'animation') {
+        this.referenceSourceLocked = false;
+        this.referencePaused = false;
+        this.referenceReviewTime = 0;
+        this.referenceSpeed = 0;
+        this.referenceAnimator.reset();
+        this.referenceBadge.textContent = 'RIG V3 — IDLE / ЖИВАЯ СТОЙКА';
+      } else if (action === 'source') {
+        this.referenceSourceLocked = true;
+        this.referencePaused = true;
+        this.referenceSpeed = 0;
+        this.referenceAnimator.reset();
+        this.referenceBadge.textContent = 'SOURCE LOCK — ИСХОДНАЯ МОДЕЛЬ БЕЗ ДЕФОРМАЦИИ';
+      } else if (action === 'pause') {
+        this.referencePaused = !this.referencePaused;
+      } else if (action === 'speed-half') this.referencePlaybackRate = 0.5;
+      else if (action === 'speed-full') this.referencePlaybackRate = 1;
+      else this.playerReferenceView = action;
+    });
+    document.body.appendChild(panel);
+    this.referenceControls = panel;
   }
 
   updatePlayerReferenceAnimation(dt, elapsed) {
@@ -641,8 +721,12 @@ export class Game {
 
     if (this.state === 'player-reference') {
       this.updateWorld(dt, time);
-      const referenceElapsed = time - this.referenceStartedAt;
-      if (this.referenceAnimator) this.updatePlayerReferenceAnimation(dt, referenceElapsed);
+      if (!this.referencePaused && !this.referenceSourceLocked) {
+        const reviewDt = dt * this.referencePlaybackRate;
+        this.referenceReviewTime += reviewDt;
+        if (this.referenceAnimator) this.updatePlayerReferenceAnimation(reviewDt, this.referenceReviewTime);
+      }
+      const referenceElapsed = this.referenceReviewTime;
       const fixedAngles = { front: Math.PI, back: 0, left: Math.PI / 2, right: -Math.PI / 2, threequarter: Math.PI * 0.78 };
       this.playerReference.rotation.y = fixedAngles[this.playerReferenceView]
         ?? referenceElapsed * 0.32 + Math.PI;
