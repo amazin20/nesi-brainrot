@@ -106,6 +106,7 @@ const TRANSITION_DURATION = Object.freeze({
 });
 
 const INTERACTION_DURATION = Object.freeze({ grab: 0.72, pull: 0.92, push: 0.82, throw: 0.9 });
+const FOOT_IK_MAX_INFLUENCE = 0.42;
 
 const POSE_LIMITS = Object.freeze({
   Pelvis: [[-0.55, 0.55], [-0.5, 0.5], [-0.55, 0.55]],
@@ -157,7 +158,6 @@ export class PlayerAnimator {
     this.transitionFrom = {};
     this.euler = new THREE.Euler(0, 0, 0, 'XYZ');
     this.poseQuaternion = new THREE.Quaternion();
-    this.locomotionEffort = new ScalarSpring(11, 1);
     this.pelvisOffset = new VectorSpring(20, 0.92);
     this.carrierSpring = new VectorSpring(11, 0.78);
     this.footPlant = { L: new ScalarSpring(24, 0.95), R: new ScalarSpring(24, 0.95) };
@@ -218,7 +218,6 @@ export class PlayerAnimator {
     this.stopPulse = 0;
     this.lastPlanarVelocity.set(0, 0, 0);
     this.accelerationFilter.reset();
-    this.locomotionEffort.reset();
     this.interaction = null;
     this.interactionElapsed = 0;
     this.landPulse = 0;
@@ -343,16 +342,12 @@ export class PlayerAnimator {
     const lift = THREE.MathUtils.lerp(0.62, 1.08, runBlend) * (hasCargo ? 0.76 : 1);
     const leftSwing = clamp01(-step);
     const rightSwing = clamp01(step);
-    const leftContact = this.getFootContactTarget('L', hasCargo ? 'carry_walk' : 'walk');
-    const rightContact = this.getFootContactTarget('R', hasCargo ? 'carry_walk' : 'walk');
-    const leftRoll = Math.cos(this.phase) * (1 - Math.abs(step)) * (0.12 + runBlend * 0.14);
-    const rightRoll = Math.cos(this.phase + Math.PI) * (1 - Math.abs(step)) * (0.12 + runBlend * 0.14);
     this.addRotation('UpperLegL', step * stride, 0, -across * 0.018);
     this.addRotation('UpperLegR', -step * stride, 0, across * 0.018);
     this.addRotation('LowerLegL', leftSwing * lift + Math.max(0, across) * runBlend * 0.16);
     this.addRotation('LowerLegR', rightSwing * lift + Math.max(0, -across) * runBlend * 0.16);
-    this.addRotation('FootL', -step * stride * 0.42 - leftSwing * lift * 0.68 + leftRoll * (1 - leftContact * 0.55));
-    this.addRotation('FootR', step * stride * 0.42 - rightSwing * lift * 0.68 + rightRoll * (1 - rightContact * 0.55));
+    this.addRotation('FootL', -step * stride * 0.42 - leftSwing * lift * 0.68);
+    this.addRotation('FootR', step * stride * 0.42 - rightSwing * lift * 0.68);
     const weightShift = step * THREE.MathUtils.lerp(0.045, 0.075, runBlend);
     this.addRotation('Pelvis', 0, 0, -weightShift);
     this.addRotation('Spine', 0, step * 0.035, weightShift * 0.65);
@@ -699,14 +694,6 @@ export class PlayerAnimator {
     return output;
   }
 
-  getFootContactTarget(side, state) {
-    if (['idle', 'carry_idle', 'landing', 'move_stop'].includes(state)) return 1;
-    const sidePhase = this.phase + (side === 'R' ? Math.PI : 0);
-    // Stance occupies slightly more than half a cycle. At phase crossover both
-    // feet overlap briefly, creating a stable double-support interval.
-    return 1 - smoothstep(-0.16, 0.34, Math.sin(sidePhase));
-  }
-
   applyArmIK(state, hasCargo) {
     if (!hasCargo && !['grab', 'pull', 'push'].includes(state)) return;
     this.visual.updateWorldMatrix(true, true);
@@ -756,32 +743,33 @@ export class PlayerAnimator {
     }
     this.visual.updateWorldMatrix(true, true);
     this.bones.Root.getWorldPosition(this.ikRoot);
+    const idle = state === 'idle' || state === 'carry_idle' || state === 'landing';
     const targets = {
-      L: this.getFootContactTarget('L', state),
-      R: this.getFootContactTarget('R', state),
+      L: idle ? 1 : 1 - smoothstep(0.2, 0.72, Math.abs(Math.sin(this.phase))),
+      R: idle ? 1 : 1 - smoothstep(0.2, 0.72, Math.abs(Math.sin(this.phase + Math.PI))),
     };
     for (const side of ['L', 'R']) {
       this.footPlant[side].target = targets[side];
       const contact = this.footPlant[side].step(dt);
+      const wasPlanted = this.footContact[side] > 0.3;
       this.footContact[side] = contact;
-      if (this.footLockActive[side] && targets[side] < 0.08) this.footLockActive[side] = false;
       const foot = this.bones[`Foot${side}`];
-      if (!this.footLockActive[side] && targets[side] > 0.72 && contact > 0.24) {
+      if (!this.footLockActive[side] && !wasPlanted && contact > 0.3) {
         foot.getWorldPosition(this.footLockTarget[side]);
         this.footLockTarget[side].y = this.ikRoot.y + 0.048;
         this.footLockActive[side] = true;
       }
+      if (this.footLockActive[side] && contact < 0.12) this.footLockActive[side] = false;
       if (!this.footLockActive[side] || contact <= 0.02) continue;
       this.ikTarget.copy(this.footLockTarget[side]);
       this.ikTarget.y = this.ikRoot.y + 0.048;
       this.getLegPoleTarget(side);
-      const lockInfluence = smoothstep(0.16, 0.72, contact);
       this.solveTwoBoneIK(
         `UpperLeg${side}`,
         `LowerLeg${side}`,
         `Foot${side}`,
         this.ikTarget,
-        lockInfluence,
+        contact * FOOT_IK_MAX_INFLUENCE,
         this.ikPoleTarget,
       );
     }
@@ -798,9 +786,7 @@ export class PlayerAnimator {
     turnRate = 0,
   } = {}) {
     const safeDt = Math.min(Math.max(dt, 1 / 240), 0.05);
-    const rawSpeedRatio = clamp01(planarSpeed / Math.max(maxSpeed, 0.01));
-    this.locomotionEffort.target = rawSpeedRatio;
-    const speedRatio = clamp01(this.locomotionEffort.step(safeDt));
+    const speedRatio = clamp01(planarSpeed / Math.max(maxSpeed, 0.01));
     const runBlend = smoothstep(0.52, 0.82, speedRatio);
     const requestedSpeed = Number.isFinite(desiredSpeed) ? Math.max(0, desiredSpeed) : planarSpeed;
     const wantedMovement = requestedSpeed > 0.15;
@@ -839,9 +825,7 @@ export class PlayerAnimator {
 
     const locomoting = ['move_start', 'walk', 'run', 'carry_walk'].includes(nextState);
     if (locomoting && planarSpeed > 0.05) {
-      // One full phase is one same-foot stride. Match it to the rig's leg
-      // reach so a planted foot never has to cover an impossible distance.
-      const cycleDistance = THREE.MathUtils.lerp(1.22, 1.82, runBlend) * (hasCargo ? 0.84 : 1);
+      const cycleDistance = THREE.MathUtils.lerp(2.55, 3.85, runBlend) * (hasCargo ? 0.88 : 1);
       this.phase += (planarSpeed / cycleDistance) * Math.PI * 2 * safeDt;
     } else this.phase += safeDt * 0.7;
 
