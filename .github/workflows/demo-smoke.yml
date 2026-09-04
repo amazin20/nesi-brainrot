@@ -56,7 +56,8 @@ jobs:
             model-07-spin-hammer.glb \
             model-08-roller.glb \
             model-09-hurdles.glb \
-            model-10-platform.glb; do
+            model-10-platform.glb \
+            model-11-portal-gun.glb; do
             curl -fsSI "http://127.0.0.1:4173/nesi-brainrot/models/$model" >/dev/null
           done
 
@@ -196,6 +197,104 @@ jobs:
             if (game.finishState !== 'won' || !game.winScreenActive) throw new Error(`finish failed: ${game.finishState}/${game.winScreenActive}`);
 
             report.finish = await capture();
+
+            await page.close();
+            page = await browser.newPage();
+            await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+            page.on('pageerror', (error) => {
+              const text = '[rift-pageerror] ' + (error.stack || error);
+              browserMessages.push(text);
+              console.error(text);
+            });
+            page.on('requestfailed', (request) => {
+              const text = '[rift-requestfailed] ' + request.url() + ' :: ' + (request.failure()?.errorText || 'unknown');
+              browserMessages.push(text);
+              console.error(text);
+            });
+
+            await page.goto('http://127.0.0.1:4173/nesi-brainrot/?mode=rift&smoke=1', {
+              waitUntil: 'domcontentloaded',
+              timeout: 30000,
+            });
+            await page.waitForFunction(() => {
+              const state = document.documentElement.dataset.runtimeState;
+              return state === 'playing' || state === 'error';
+            }, { timeout: 90000, polling: 250 });
+
+            report.riftStartup = await capture();
+            const riftData = report.riftStartup.dataset;
+            if (riftData.gameReady !== 'true') throw new Error('rift gameReady=' + riftData.gameReady);
+            if (riftData.levelSmoke !== 'pass') throw new Error('rift levelSmoke=' + riftData.levelSmoke);
+            if (riftData.modelsLoaded !== '11') throw new Error('rift modelsLoaded=' + riftData.modelsLoaded);
+            if (riftData.modelFallbacks !== '0') throw new Error('rift modelFallbacks=' + riftData.modelFallbacks);
+
+            report.riftView = await page.evaluate(() => {
+              const rift = window.__NESI_DEMO_GAME__;
+              return {
+                cameraDistance: rift.camera.position.distanceTo(rift.playerPosition),
+                playerVisible: rift.playerGroup.visible,
+                playerAsset: rift.playerVisual.userData.assetId,
+                thirdPerson: rift.thirdPerson,
+                mechanic: window.__NESI_DEMO_DIAGNOSTICS__?.mechanic,
+                hasPairedPortals: Boolean(rift.portals),
+              };
+            });
+            if (!report.riftView.thirdPerson || report.riftView.cameraDistance <= 3) {
+              throw new Error('third-person camera invariant failed: ' + JSON.stringify(report.riftView));
+            }
+            if (!report.riftView.playerVisible || report.riftView.playerAsset !== 1 || report.riftView.hasPairedPortals) {
+              throw new Error('rift player/mechanic invariant failed: ' + JSON.stringify(report.riftView));
+            }
+            if (report.riftView.mechanic !== 'single-anchor-rift-route') {
+              throw new Error('unexpected rift mechanic: ' + report.riftView.mechanic);
+            }
+
+            await page.evaluate(() => {
+              const rift = window.__NESI_DEMO_GAME__;
+              rift.riftCooldown = 0;
+              rift.activateRiftRoute();
+            });
+            await page.waitForFunction(() => Boolean(window.__NESI_DEMO_GAME__?.riftTravel), { timeout: 3000 });
+            await new Promise((resolve) => setTimeout(resolve, 260));
+            await page.screenshot({ path: 'smoke-artifacts/rift-third-person.png', type: 'png' });
+            await page.waitForFunction(() => {
+              const rift = window.__NESI_DEMO_GAME__;
+              return Boolean(rift) && !rift.riftTravel && rift.playerPosition.z < 7.6;
+            }, { timeout: 5000, polling: 50 });
+
+            report.riftCarryRoute = await page.evaluate(() => {
+              const rift = window.__NESI_DEMO_GAME__;
+              rift.playerPosition.set(-4.8, 0, 1.8);
+              rift.playerGroup.position.copy(rift.playerPosition);
+              rift.cube.position.set(-4.8, 0.79, 1.8);
+              rift.toggleCube();
+              const position = rift.riftBeacon.position.clone().set(0, 1.34, -3.39);
+              const normal = rift.riftBeacon.normal.clone().set(0, 0, 1);
+              rift.setRiftBeacon(position, normal, false);
+              rift.riftCooldown = 0;
+              rift.activateRiftRoute();
+              return { heldAtStart: rift.heldCube, routeStarted: Boolean(rift.riftTravel) };
+            });
+            if (!report.riftCarryRoute.heldAtStart || !report.riftCarryRoute.routeStarted) {
+              throw new Error('rift carry route did not start');
+            }
+            await page.waitForFunction(() => {
+              const rift = window.__NESI_DEMO_GAME__;
+              return Boolean(rift) && !rift.riftTravel && rift.playerPosition.z < -4.1;
+            }, { timeout: 5000, polling: 50 });
+            report.riftFinish = await page.evaluate(() => {
+              const rift = window.__NESI_DEMO_GAME__;
+              return {
+                playerZ: rift.playerPosition.z,
+                cubeZ: rift.cube.position.z,
+                held: rift.heldCube,
+                routeActive: Boolean(rift.riftTravel),
+              };
+            });
+            if (!report.riftFinish.held || report.riftFinish.cubeZ >= -3.6 || report.riftFinish.routeActive) {
+              throw new Error('rift carry traversal failed: ' + JSON.stringify(report.riftFinish));
+            }
+
             console.log(JSON.stringify(report, null, 2));
           } catch (error) {
             report.failure = String(error?.stack || error);

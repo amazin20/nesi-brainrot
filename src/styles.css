@@ -198,7 +198,11 @@ kbd { font-family: inherit; color: white; font-weight: 800; font-size: 12px; }
   border-radius: 0 9px 9px 0;
 }
 .portal-crosshair i:first-child { right: -2px; color: #35d6ff; }
-.portal-crosshair i:last-child { left: -2px; color: #ff9b42; transform: rotate(180deg); }
+.portal-crosshair i:last-child { left: -2px; color: #b45cff; transform: rotate(180deg); }
+
+.rift-crosshair::before,
+.rift-crosshair::after { transform: translate(-50%, -50%) rotate(45deg); }
+.rift-crosshair i { border-radius: 2px 10px 2px 10px; }
 
 .portal-help {
   position: fixed;
@@ -222,7 +226,7 @@ kbd { font-family: inherit; color: white; font-weight: 800; font-size: 12px; }
 .portal-help span { display: flex; align-items: center; gap: 6px; }
 .portal-dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
 .portal-dot--blue { color: #35d6ff; background: currentColor; }
-.portal-dot--orange { color: #ff9b42; background: currentColor; }
+.portal-dot--orange { color: #b45cff; background: currentColor; }
 
 .portal-action {
   position: fixed;
@@ -256,7 +260,7 @@ kbd { font-family: inherit; color: white; font-weight: 800; font-size: 12px; }
   font-weight: 800;
 }
 .portal-fire--blue { color: #35d6ff; }
-.portal-fire--orange { color: #ff9b42; }
+.portal-fire--orange { color: #b45cff; }
 .portal-fire--use { color: #9cff66; }
 
 @media (hover: none), (pointer: coarse) {

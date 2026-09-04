@@ -1,12 +1,12 @@
 import './styles.css';
 import { Game } from './game/Game.js';
-import { PortalGame } from './game/PortalGame.js';
+import { RiftGame } from './game/RiftGame.js';
 import { formatTime } from './game/rules.js';
 
 const $ = (selector) => document.querySelector(selector);
 const query = new URLSearchParams(window.location.search);
 const smokeMode = query.get('smoke') === '1';
-const portalMode = query.get('mode') === 'portal';
+const portalMode = ['rift', 'portal'].includes(query.get('mode'));
 const elements = {
   game: $('#game'),
   loading: $('#loading'),
@@ -40,23 +40,23 @@ const elements = {
 
 if (portalMode) {
   document.body.classList.add('portal-mode');
-  document.title = 'Brainrot Lab — портальная 3D-демка';
-  document.querySelector('#loading .eyebrow').textContent = 'ЗАГРУЖАЕМ ТЕСТОВУЮ КАМЕРУ';
-  document.querySelector('#loading h1').innerHTML = 'BRAINROT<br /><em>LAB</em>';
-  document.querySelector('#start-screen .eyebrow').textContent = 'ИГРА С ПОРТАЛЬНОЙ ФИЗИКОЙ';
-  elements.start.querySelector('h1').innerHTML = 'BRAINROT<br /><em>LAB</em>';
-  elements.start.querySelector('.lead').textContent = 'Пройди тестовую камеру: свяжи два портала, перенеси брейнрот-куб на платформу и открой выход.';
+  document.title = 'Brainrot Rift Lab — игра от третьего лица';
+  document.querySelector('#loading .eyebrow').textContent = 'ЗАГРУЖАЕМ РЕЗОНАНСНУЮ ЛАБОРАТОРИЮ';
+  document.querySelector('#loading h1').innerHTML = 'RIFT<br /><em>LAB</em>';
+  document.querySelector('#start-screen .eyebrow').textContent = 'ОРИГИНАЛЬНАЯ ФАЗОВАЯ МЕХАНИКА · ТРЕТЬЕ ЛИЦО';
+  elements.start.querySelector('h1').innerHTML = 'RIFT<br /><em>LAB</em>';
+  elements.start.querySelector('.lead').textContent = 'Ставь один разлом-маяк и строй к нему управляемый фазовый маршрут сквозь стену. Перенеси Brainrot-куб, совмести резонанс и открой выход.';
   elements.start.querySelector('.control-grid').innerHTML = `
     <div><kbd>WASD</kbd><span>движение</span></div>
     <div><kbd>МЫШЬ</kbd><span>обзор</span></div>
-    <div><kbd>ЛКМ / ПКМ</kbd><span>два портала</span></div>
+    <div><kbd>ЛКМ</kbd><span>поставить маяк</span></div>
+    <div><kbd>ПКМ / Q</kbd><span>фазовый маршрут</span></div>
     <div><kbd>E</kbd><span>взять куб</span></div>
-    <div><kbd>SPACE</kbd><span>прыжок</span></div>
-    <div><kbd>R</kbd><span>заново</span></div>`;
-  elements.play.innerHTML = 'ВОЙТИ В ЛАБОРАТОРИЮ <span>→</span>';
+    <div><kbd>SPACE / R</kbd><span>прыжок / заново</span></div>`;
+  elements.play.innerHTML = 'ЗАПУСТИТЬ RIFT LAB <span>→</span>';
   elements.start.querySelector('.mobile-note').textContent = 'На ПК кликни по игре, чтобы захватить курсор. Esc — отпустить курсор и поставить паузу.';
-  document.querySelector('#win-screen .eyebrow').textContent = 'ТЕСТОВАЯ КАМЕРА ПРОЙДЕНА';
-  document.querySelector('#win-screen h2').textContent = 'ВЫХОД ОТКРЫТ!';
+  document.querySelector('#win-screen .eyebrow').textContent = 'РЕЗОНАНСНЫЙ МАРШРУТ ЗАВЕРШЕН';
+  document.querySelector('#win-screen h2').textContent = 'RIFT LAB ПРОЙДЕН!';
   elements.playAgainButton.textContent = 'ПРОЙТИ ЕЩЁ РАЗ';
 }
 
@@ -96,7 +96,7 @@ function publishDemoDiagnostics(game, referenceMode = false) {
     modelsLoaded: game.assets.size,
     assetVertices,
     suspiciousFallbacks,
-    surfaces: game.surfaces?.length ?? game.portalSurfaces?.length ?? 0,
+    surfaces: game.surfaces?.length ?? game.riftSurfaces?.length ?? 0,
     hazards: game.hazards?.length ?? game.motions?.length ?? 0,
     bouncers: game.bouncers?.length ?? 0,
     checkpoints: game.checkpoints?.length ?? (game.buttonRoot ? 2 : 0),
@@ -107,13 +107,17 @@ function publishDemoDiagnostics(game, referenceMode = false) {
     hasPlayer: Boolean(portalMode ? game.playerPosition : game.player),
     hasCargoObject: Boolean(portalMode ? game.cube : game.cargo),
     hasFinish: Boolean(portalMode ? game.door : game.finishGate),
+    thirdPerson: Boolean(portalMode ? game.thirdPerson : true),
+    mechanic: portalMode ? 'single-anchor-rift-route' : 'runner',
     winScreenVisible: elements.win.classList.contains('screen--active'),
   };
 
   const playable = referenceMode || (portalMode
     ? report.modelsLoaded === 11
       && report.suspiciousFallbacks === 0
-      && game.portals?.length === 2
+      && game.riftBeacon?.placed
+      && game.thirdPerson === true
+      && game.riftSurfaces?.length >= 8
       && report.hasLevel
       && report.hasPlayer
       && report.hasCargoObject
@@ -140,7 +144,7 @@ function publishDemoDiagnostics(game, referenceMode = false) {
   return report;
 }
 
-const GameMode = portalMode ? PortalGame : Game;
+const GameMode = portalMode ? RiftGame : Game;
 const game = new GameMode({
   container: elements.game,
   touch: {
@@ -192,7 +196,7 @@ const game = new GameMode({
   onWin: ({ elapsed, newRecord }) => {
     elements.resultTime.textContent = formatTime(elapsed);
     elements.recordMessage.textContent = portalMode
-      ? 'Порталы стабильны, брейнрот-куб доставлен'
+      ? 'Фазовый маршрут стабилен, Brainrot-куб доставлен'
       : newRecord ? 'НОВЫЙ РЕКОРД!' : 'Брейнрот доставлен в целости';
     showScreen(elements.win, true);
     elements.mobileControls.classList.remove('mobile-controls--active');
