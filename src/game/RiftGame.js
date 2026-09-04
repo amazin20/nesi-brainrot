@@ -324,8 +324,10 @@ export class RiftGame {
   }
 
   addDetails() {
-    const platform = this.model(10, 7.2);
-    platform.position.set(0, 0.03, 17.2);
+    // The imported platform is a tall prop, not a walkable floor tile.
+    // Keep the central route and third-person camera boom unobstructed.
+    const platform = this.model(10, 3.8);
+    platform.position.set(-7.8, 0.03, 17.2);
     platform.rotation.y = Math.PI / 2;
     this.world.add(platform);
 
@@ -357,7 +359,7 @@ export class RiftGame {
     this.world.add(spinner);
     this.motions.push({ object: spinner, type: 'spin', speed: 0.7 });
     const roller = this.model(8, 4.8);
-    roller.position.set(0, 0.62, 11.2);
+    roller.position.set(7.6, 0.62, 11.2);
     this.world.add(roller);
     this.motions.push({ object: roller, type: 'roll', speed: 0.9 });
 
