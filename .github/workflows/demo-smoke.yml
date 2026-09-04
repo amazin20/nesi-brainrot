@@ -66,5 +66,7 @@ jobs:
             smoke-artifacts/report.json
             smoke-artifacts/lab-third-person.png
             smoke-artifacts/player-animation.mp4
+            smoke-artifacts/weapon-grip.png
+            smoke-artifacts/carry-pose.png
             smoke-artifacts/recording-fallback/
           if-no-files-found: warn

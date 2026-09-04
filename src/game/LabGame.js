@@ -5,6 +5,7 @@ import { InputController } from './InputController.js';
 import { AudioController } from './AudioController.js';
 import { LabCamera } from './LabCamera.js';
 import { LabPlayerAnimator } from './LabPlayerAnimator.js';
+import { LabHeldDevice } from './LabHeldDevice.js';
 import { LabPortals } from './LabPortals.js';
 import { LAB_ASSETS } from './labAssets.js';
 
@@ -231,7 +232,8 @@ export class LabGame {
     this.playerGroup.add(this.playerVisual); this.scene.add(this.playerGroup);
     this.carrier = new THREE.Group(); this.scene.add(this.carrier);
     this.animator = new LabPlayerAnimator({ visual: this.playerVisual, carrier: this.carrier });
-    this.weapon = this.model(11, .7); this.weapon.position.set(.65, 1.1, -.25); this.playerGroup.add(this.weapon);
+    this.weapon = this.model(11, .7);
+    this.heldDevice = new LabHeldDevice({ model: this.weapon, bones: this.animator.bones, playerRoot: this.playerGroup });
     this.cameraRig = new LabCamera({ camera: this.camera, blockers: this.cameraBlockers });
     this.portals = new LabPortals({ scene: this.scene, renderer: this.renderer, camera: this.camera });
     this.createOverlay(); this.resetRun(false);
@@ -261,11 +263,11 @@ export class LabGame {
     this.reticle = document.createElement('div'); this.reticle.className = 'lab-reticle';
     this.reticle.innerHTML = '<i></i><i></i>'; document.body.appendChild(this.reticle);
     this.help = document.createElement('div'); this.help.className = 'lab-controls';
-    this.help.innerHTML = '<span><b class="blue">ЛКМ</b> вход</span><span><b class="amber">ПКМ</b> выход</span><span><b>E</b> куб</span><span><b>Q</b> подсказка</span>';
+    this.help.innerHTML = '<span><b class="blue">ЛКМ</b> вход</span><span><b class="amber">ПКМ</b> выход</span><span><b>F</b> прицел</span><span><b>E</b> куб</span><span><b>Q</b> подсказка</span>';
     document.body.appendChild(this.help);
     this.prompt = document.createElement('div'); this.prompt.className = 'lab-prompt'; document.body.appendChild(this.prompt);
     const mobile = document.createElement('div'); mobile.className = 'lab-mobile';
-    for (const [label, action] of [['①', () => this.placePortal(0)], ['②', () => this.placePortal(1)], ['E', () => this.toggleCube()], ['?', () => this.showHint()]]) {
+    for (const [label, action] of [['①', () => this.placePortal(0)], ['②', () => this.placePortal(1)], ['◎', () => { this.aimHeld = !this.aimHeld; }], ['E', () => this.toggleCube()], ['?', () => this.showHint()]]) {
       const button = document.createElement('button'); button.textContent = label;
       button.addEventListener('pointerdown', e => { e.preventDefault(); action(); }); mobile.appendChild(button);
     }
@@ -303,6 +305,9 @@ export class LabGame {
 
   placePortal(index) {
     if (this.state !== 'playing') return false;
+    if (this.heldCube) { this.callbacks.onToast('Отпусти куб [E], чтобы взять пушку'); return false; }
+    this.aimingTime = 1.1;
+    this.animator?.triggerShot?.(); this.heldDevice?.fire(index);
     this.scene.updateMatrixWorld(true);
     this.raycaster.setFromCamera(new THREE.Vector2(), this.camera);
     const hit = this.raycaster.intersectObjects(this.aimBlockers, false).find(h => h.object.visible);
@@ -311,7 +316,11 @@ export class LabGame {
     }
     if (!this.placeOnPanel(index, hit.object)) return false;
     this.audio.tone(index ? 450 : 680, .13, 'sine', .04);
-    this.aimingTime = .8; return true;
+    return true;
+  }
+
+  isAiming() {
+    return !this.heldCube && Boolean(this.aimHeld || this.input?.keys.has('KeyF') || this.aimingTime > 0);
   }
 
   placeOnPanel(index, panel) {
@@ -337,7 +346,7 @@ export class LabGame {
   resetRun(playing = true) {
     this.state = playing ? 'playing' : 'ready'; this.stage = 0; this.elapsed = 0; this.teleportCount = 0;
     this.heldCube = null; this.portalCooldown = 0; this.portals.clear(); this.portalSurfaceIds = [null, null];
-    this.launchTime = 0;
+    this.launchTime = 0; this.aimHeld = false; this.aimingTime = 0;
     for (let i = 0; i < this.cubes.length; i++) {
       this.cubes[i].group.position.fromArray(CHAMBERS[i].cube); this.cubes[i].group.rotation.set(0, .25, 0);
       this.cubes[i].velocity.set(0, 0, 0); this.cubes[i].cooldown = 0;
@@ -353,7 +362,9 @@ export class LabGame {
     this.playerPosition.fromArray(CHAMBERS[this.stage].start); this.playerVelocity.set(0, 0, 0);
     this.playerGrounded = true; this.yaw = 0; this.pitch = -.15; this.facing = Math.PI; this.launchTime = 0;
     this.playerGroup.position.copy(this.playerPosition); this.playerGroup.rotation.y = this.facing;
-    this.animator.reset(); this.cameraRig.reset(this.playerPosition, this.yaw, this.pitch);
+    this.aimingTime = 0; this.aimHeld = false;
+    this.animator.reset(); this.heldDevice?.reset?.(); this.heldDevice?.update({ dt: 0, carrying: false });
+    this.cameraRig.reset(this.playerPosition, this.yaw, this.pitch);
     this.input?.keys.clear(); this.accumulator = 0;
     if (announce) this.callbacks.onToast('Возврат к началу камеры. Куб сохранён');
   }
@@ -409,8 +420,9 @@ export class LabGame {
     const previous = this.playerPosition.clone();
     const wasGrounded = this.playerGrounded;
     const move = this.input.getMove();
-    const sprint = this.input.keys.has('ShiftLeft') && !this.heldCube;
-    const speed = this.heldCube ? 3.7 : sprint ? 6.6 : 4.8;
+    const aiming = this.isAiming();
+    const sprint = this.input.keys.has('ShiftLeft') && !this.heldCube && !aiming;
+    const speed = this.heldCube ? 3.7 : aiming ? 3.2 : sprint ? 6.6 : 4.8;
     const desired = new THREE.Vector3(move.x, 0, move.y).applyAxisAngle(UP, this.yaw).multiplyScalar(speed);
     const acceleration = this.playerGrounded ? 10.5 : 3;
     this.playerVelocity.x = THREE.MathUtils.damp(this.playerVelocity.x, desired.x, acceleration, dt);
@@ -447,12 +459,16 @@ export class LabGame {
     if (this.playerPosition.y < -5) { this.respawn(); return; }
     const planar = Math.hypot(this.playerVelocity.x, this.playerVelocity.z);
     const priorFacing = this.facing;
-    if (planar > .12) {
-      const target = Math.atan2(this.playerVelocity.x, this.playerVelocity.z);
+    if (aiming || planar > .12) {
+      const target = aiming ? this.yaw + Math.PI : Math.atan2(this.playerVelocity.x, this.playerVelocity.z);
       this.facing += Math.atan2(Math.sin(target - this.facing), Math.cos(target - this.facing)) * (1 - Math.exp(-12 * dt));
     }
     this.playerGroup.position.copy(this.playerPosition); this.playerGroup.rotation.y = this.facing;
-    this.animator.update({ dt, speed: planar, velocity: this.playerVelocity, grounded: this.playerGrounded, turnRate: Math.atan2(Math.sin(this.facing - priorFacing), Math.cos(this.facing - priorFacing)) / Math.max(dt, .001), carrying: Boolean(this.heldCube), phase: this.portalCooldown > .2, elapsed: this.elapsed / 1000 });
+    const directionScale = planar > .01 ? 1 / planar : 0;
+    const moveForward = (this.playerVelocity.x * Math.sin(this.facing) + this.playerVelocity.z * Math.cos(this.facing)) * directionScale;
+    const moveRight = (this.playerVelocity.x * Math.cos(this.facing) - this.playerVelocity.z * Math.sin(this.facing)) * directionScale;
+    this.animator.update({ dt, speed: planar, velocity: this.playerVelocity, grounded: this.playerGrounded, turnRate: Math.atan2(Math.sin(this.facing - priorFacing), Math.cos(this.facing - priorFacing)) / Math.max(dt, .001), carrying: Boolean(this.heldCube), phase: this.portalCooldown > .2, elapsed: this.elapsed / 1000, weapon: true, aiming, aimPitch: this.pitch, moveForward, moveRight });
+    this.heldDevice?.update({ dt, carrying: Boolean(this.heldCube) });
   }
 
   floorHeight(x, z) {
@@ -495,7 +511,8 @@ export class LabGame {
     if (this.state !== 'playing') return;
     if (this.heldCube) {
       this.heldCube.velocity.copy(this.playerVelocity).multiplyScalar(.3);
-      this.heldCube = null; this.callbacks.onToast('Куб отпущен'); return;
+      this.heldCube = null; this.animator?.triggerInteraction?.('place');
+      this.callbacks.onToast('Куб отпущен'); return;
     }
     const cube = this.cubes[this.stage];
     const origin = this.playerPosition.clone().addScaledVector(UP, 1.25);
@@ -506,7 +523,8 @@ export class LabGame {
     const blocked = this.raycaster.intersectObjects(this.cameraBlockers, false).some(hit => hit.distance < distance - .05);
     this.raycaster.far = Infinity;
     if (blocked) { this.callbacks.onToast('Куб за преградой'); return; }
-    this.heldCube = cube; cube.velocity.set(0, 0, 0); this.audio.pickup();
+    this.heldCube = cube; cube.velocity.set(0, 0, 0); this.aimingTime = 0; this.aimHeld = false;
+    this.animator?.triggerInteraction?.('pickup'); this.audio.pickup();
   }
 
   updateCubes(dt) {
@@ -560,7 +578,7 @@ export class LabGame {
 
   updateVisuals(dt) {
     this.visualTime += this.state === 'playing' ? dt : 0;
-    this.cameraRig.update({ dt, target: this.playerPosition, yaw: this.yaw, pitch: this.pitch, velocity: this.playerVelocity, aiming: this.aimingTime > 0 });
+    this.cameraRig.update({ dt, target: this.playerPosition, yaw: this.yaw, pitch: this.pitch, velocity: this.playerVelocity, aiming: this.isAiming() });
     this.camera.getWorldDirection(this.cameraForward);
     const z = this.playerPosition.z;
     this.keyLight.position.set(this.playerPosition.x + 5, 12, z + 7); this.keyLight.target.position.set(this.playerPosition.x, 0, z - 3);
@@ -577,7 +595,7 @@ export class LabGame {
   }
 
   diagnostics() {
-    return { state: this.state, modelsLoaded: this.assets.size, missingModels: this.failures, thirdPerson: true, stage: this.stage, portalsReady: this.portals.ready, teleportCount: this.teleportCount, cameraDistance: this.camera.position.distanceTo(this.playerPosition), animation: this.animator.diagnostics ?? null };
+    return { state: this.state, modelsLoaded: this.assets.size, missingModels: this.failures, thirdPerson: true, stage: this.stage, portalsReady: this.portals.ready, teleportCount: this.teleportCount, cameraDistance: this.camera.position.distanceTo(this.playerPosition), animation: this.animator.diagnostics ?? null, device: this.heldDevice?.diagnostics ?? null, aiming: this.isAiming() };
   }
 
   win() {
