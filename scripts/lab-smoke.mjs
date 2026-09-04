@@ -5,6 +5,9 @@ import puppeteer from 'puppeteer-core';
 
 const out = process.env.EVIDENCE_DIR || 'smoke-artifacts';
 fs.mkdirSync(out, { recursive: true });
+if (process.env.RECORD_VIDEO === '1' && spawnSync('ffmpeg', ['-version']).status !== 0) {
+  throw new Error('ffmpeg must be installed before recording');
+}
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME_PATH,
   headless: true,
@@ -102,6 +105,8 @@ try {
     assert(stage === 2 ? result.state === 'won' : result.nextStage === stage + 1, 'chamber progression ' + stage);
     report.chambers.push(result);
   }
+  report.gameplayPassed = true;
+  console.log('All three chambers passed:', JSON.stringify(report.chambers));
 
   const capture = async (name, setup) => {
     if (setup) await page.evaluate(setup);
@@ -146,9 +151,11 @@ try {
         return g.renderer.domElement.toDataURL('image/png').split(',')[1];
       }, { frame, fps });
       fs.writeFileSync(path.join(frames, String(frame).padStart(4, '0') + '.png'), Buffer.from(png, 'base64'));
+      if (frame % fps === 0) console.log('Recorded animation frame', frame, '/', frameCount);
     }
     const encoded = spawnSync('ffmpeg', ['-y', '-framerate', String(fps), '-i', path.join(frames, '%04d.png'), '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', path.join(out, 'player-animation.mp4')], { encoding: 'utf8' });
-    assert(encoded.status === 0, 'ffmpeg encoding failed: ' + encoded.stderr);
+    if (encoded.status !== 0) fs.renameSync(frames, path.join(out, 'recording-fallback'));
+    assert(encoded.status === 0, 'ffmpeg encoding failed: ' + (encoded.error?.message || encoded.stderr));
     report.video = { frames: frameCount, fps, duration: frameCount / fps };
   }
   assert(report.errors.length === 0, 'page errors: ' + report.errors.join('\n'));

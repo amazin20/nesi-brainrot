@@ -22,6 +22,11 @@ jobs:
           npm install --no-save --package-lock=false puppeteer-core@24.16.0
       - name: Unit tests and production build
         run: npm run check
+      - name: Install video encoder
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version
       - name: Start production preview
         run: |
           npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/nesi-preview.log 2>&1 &
@@ -61,4 +66,5 @@ jobs:
             smoke-artifacts/report.json
             smoke-artifacts/lab-third-person.png
             smoke-artifacts/player-animation.mp4
+            smoke-artifacts/recording-fallback/
           if-no-files-found: warn
