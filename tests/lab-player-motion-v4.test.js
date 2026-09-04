@@ -173,3 +173,19 @@ test('attention follows a nearby companion smoothly and yields to aiming without
   assert.deepEqual(root.position.toArray(), rootPosition.toArray());
   assert.deepEqual(root.quaternion.toArray(), rootQ.toArray());
 });
+
+test('narrow companion grip keeps wrists relaxed instead of counter-twisting cuffs to preserve world orientation', () => {
+  const { animator } = fixture();
+  const target = Object.fromEntries([['left', -.085], ['right', .095]].map(([key, x]) => [key,
+    animator.rig.mesh.localToWorld(new THREE.Vector3(x, .167, -.462))]));
+  for (let frame = 0; frame < 180; frame++) {
+    animator.update({ carrying: true, carryGripTargets: target, speed: 1 });
+    if (frame > 40) for (const [side, key] of [['L','left'],['R','right']]) {
+      assert.ok(animator.diagnostics.carryReach[`${key}Error`] < 1e-8, 'relaxing the glove lost contact');
+      assert.ok(Math.abs(animator.bones[`Hand${side}`].rotation.y) < .15,
+        `${side} cuff acquired a compensating wrist twist`);
+      assert.ok(animator.bones[`Hand${side}`].quaternion.angleTo(new THREE.Quaternion()) < .25,
+        `${side} wrist left its relaxed bracing pose`);
+    }
+  }
+});

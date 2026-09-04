@@ -640,14 +640,14 @@ export class LabPlayerAnimator {
       const arm = this.bones[`Arm${side}`], forearm = this.bones[`Forearm${side}`], hand = this.bones[`Hand${side}`];
       const localTarget = body.worldToLocal(this.gripTargets[key].clone());
       const solved = solveLabArm(arm.position, localTarget, this.rig.rest[`Forearm${side}`], this.rig.rest[`Hand${side}`], side);
-      // Keep the wrist's bracing orientation while the elbow follows the object.
-      // The source glove is one rigid region, so no fingertip deformation is used.
-      const wristWorld = hand.getWorldQuaternion(new THREE.Quaternion());
+      // Let the relaxed glove turn with its forearm as it embraces the object.
+      // Locking its WORLD orientation counter-twisted the fused cuff by ~55°
+      // when the elbows reached inward, although the wrist position was correct.
+      // Hand position depends on its parents, so a neutral local wrist preserves
+      // exact contact and the authored glove without that compensating twist.
       arm.quaternion.slerp(solved.arm, blend);
       forearm.quaternion.slerp(solved.forearm, blend);
       arm.updateWorldMatrix(true, true);
-      const wristLocal = forearm.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(wristWorld);
-      hand.quaternion.copy(wristLocal);
       hand.updateWorldMatrix(true, false);
       this.carryReach[`${key}Error`] = hand.getWorldPosition(new THREE.Vector3()).distanceTo(this.gripTargets[key]);
       this.carryReach[`${key}Clamped`] = solved.clamped;
