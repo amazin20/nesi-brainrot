@@ -96,3 +96,36 @@ test('yaw follows the shortest arc across the angle wrap and speed FOV stays sub
     assert.ok(camera.fov >= 62 && camera.fov <= 64.2);
   }
 });
+
+test('explicit aim blends the shoulder and boom without a first-frame screen kick', () => {
+  const { camera, rig } = setup(); const target = new THREE.Vector3();
+  const tick = (aiming, dt = 1 / 60) => rig.update({ dt, target, yaw: 0, pitch: -.2, aiming });
+  for (let i = 0; i < 120; i++) tick(false);
+  const before = camera.position.clone(); const orientation = camera.quaternion.clone();
+  tick(true, 0);
+  assert.ok(before.distanceTo(camera.position) < 1e-8, 'aim teleported the shoulder before time advanced');
+  tick(true);
+  assert.ok(before.distanceTo(camera.position) < .025, 'one aim frame abruptly shortened the camera boom');
+  assert.ok(orientation.angleTo(camera.quaternion) < .003, 'aim kicked the entire view');
+  let previous = camera.position.clone();
+  for (let i = 0; i < 90; i++) {
+    tick(i < 45);
+    assert.ok(previous.distanceTo(camera.position) < .08, 'aim or release popped between camera offsets');
+    previous.copy(camera.position);
+  }
+});
+
+test('aim framing follows the same continuous path at 30, 60 and 144 fps', () => {
+  const sample = fps => {
+    const { camera, rig } = setup();
+    for (let i = 0; i < fps; i++) rig.update({ dt: 1 / fps, target: new THREE.Vector3(), yaw: 0, pitch: -.2, aiming: true });
+    return { position: camera.position.clone(), rotation: camera.quaternion.clone(), blend: rig.aimBlend };
+  };
+  const baseline = sample(60);
+  for (const fps of [30, 144]) {
+    const result = sample(fps);
+    assert.ok(Math.abs(result.blend - baseline.blend) < 1e-10);
+    assert.ok(result.position.distanceTo(baseline.position) < .001);
+    assert.ok(result.rotation.angleTo(baseline.rotation) < .0001);
+  }
+});

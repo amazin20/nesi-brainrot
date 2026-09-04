@@ -1,4 +1,4 @@
-import { Body, Box, Material, Quaternion, SAPBroadphase, Sphere, Vec3, World } from 'cannon-es';
+import { Body, Box, ConvexPolyhedron, Material, Quaternion, SAPBroadphase, Sphere, Vec3, World } from 'cannon-es';
 
 const SOLID = 1, CARGO = 2, PLAYER = 4;
 const EPSILON = 1e-10;
@@ -59,6 +59,7 @@ export class LabPhysics {
     this.grounded = false;
     this.impact = 0;
     this.steps = 0;
+    this.portalTransports = 0;
     this._force = new Vec3();
     this._error = new Vec3();
     this._angularError = new Quaternion();
@@ -80,10 +81,38 @@ export class LabPhysics {
     return body;
   }
 
+  /** One closed convex wedge: its continuous top face matches the player slope. */
+  addStaticRamp(id, { minX, maxX, minZ, maxZ, lowY, highY, highAt = 'maxZ' } = {},
+    { friction = .64, restitution = .04, enabled = true } = {}) {
+    if (this.solids.has(id)) throw new Error(`Collider already exists: ${id}`);
+    if (![minX, maxX, minZ, maxZ, lowY, highY].every(Number.isFinite)) throw new TypeError('Ramp bounds must be finite');
+    if (!(maxX > minX && maxZ > minZ && highY >= lowY)) throw new RangeError('Ramp needs positive width/length and an ascending height range');
+    if (highAt !== 'minZ' && highAt !== 'maxZ') throw new RangeError('Ramp highAt must be minZ or maxZ');
+    // The small buried base gives the low end real volume while keeping its
+    // walking/contact height exactly lowY. It introduces no lip above ground.
+    const base = lowY - .20;
+    const { half, center } = dimensions({ min: [minX, base, minZ], max: [maxX, highY, maxZ] });
+    const near = highAt === 'minZ' ? highY : lowY, far = highAt === 'maxZ' ? highY : lowY;
+    const points = [
+      [minX, base, minZ], [maxX, base, minZ], [maxX, near, minZ], [minX, near, minZ],
+      [minX, base, maxZ], [maxX, base, maxZ], [maxX, far, maxZ], [minX, far, maxZ],
+    ];
+    const vertices = points.map(point => vector(point).vsub(center));
+    const faces = [[3, 2, 1, 0], [4, 5, 6, 7], [5, 4, 0, 1], [2, 3, 7, 6], [0, 4, 7, 3], [1, 2, 6, 5]];
+    const body = new Body({ mass: 0, type: Body.STATIC, allowSleep: false, position: center,
+      shape: new ConvexPolyhedron({ vertices, faces }), material: new Material({ friction, restitution }),
+      collisionFilterGroup: SOLID, collisionFilterMask: enabled ? CARGO : 0 });
+    body.labId = id;
+    this.solids.set(id, { body, half, target: center.clone(), remaining: 0, kind: 'ramp' });
+    this.world.addBody(body); this.cargoBody?.wakeUp();
+    return body;
+  }
+
   /** Moving platforms are advanced along their actual path during substeps. */
   updateStaticBox(id, bounds, dt = 0, enabled = true) {
     const item = this.solids.get(id);
     if (!item) throw new Error(`Unknown collider: ${id}`);
+    if (item.kind === 'ramp') throw new TypeError('A ramp cannot be reshaped as an axis-aligned box');
     const { half, center } = dimensions(bounds), { body } = item;
     const nextMask = enabled ? CARGO : 0;
     if (body.collisionFilterMask !== nextMask) this.cargoBody?.wakeUp();
@@ -161,10 +190,66 @@ export class LabPhysics {
     return body;
   }
 
-  setCarryTarget(position, { velocity, quaternion } = {}) {
+  /**
+   * A portal moves this existing body through one rigid world transform. This
+   * is an explicit crossing event, never a fall recovery or chamber spawn.
+   * `rotation` is the world-space delta, not the final cargo orientation.
+   * The held spring and all momentum are transformed with the same frame.
+   */
+  teleportCargo({ position, rotation: deltaRotation } = {}) {
+    const body = this.cargoBody;
+    if (!body) return null;
+    if (!position) throw new TypeError('A portal destination position is required');
+    const destination = vector(position), delta = rotation(deltaRotation);
+    const origin = body.position.clone();
+    if (this.carryTarget) {
+      const target = this.carryTarget;
+      target.position.vsub(origin, target.position);
+      delta.vmult(target.position, target.position);
+      target.position.vadd(destination, target.position);
+      delta.vmult(target.velocity, target.velocity);
+      delta.vmult(target.angularVelocity, target.angularVelocity);
+      delta.mult(target.quaternion, target.quaternion); target.quaternion.normalize();
+    }
+    body.position.copy(destination);
+    delta.mult(body.quaternion, body.quaternion); body.quaternion.normalize();
+    delta.vmult(body.velocity, body.velocity);
+    delta.vmult(body.angularVelocity, body.angularVelocity);
+    body.force.setZero(); body.torque.setZero();
+    body.previousPosition.copy(body.position); body.interpolatedPosition.copy(body.position);
+    body.previousQuaternion.copy(body.quaternion); body.interpolatedQuaternion.copy(body.quaternion);
+    body.aabbNeedsUpdate = true; body.wakeUp();
+    this.world.broadphase.dirty = true;
+    this.grounded = false; this.impact = 0;
+    this.portalTransports++;
+    return body;
+  }
+
+  setCarryTarget(position, { velocity, quaternion, angularVelocity, dt } = {}) {
     if (!this.cargoBody) return false;
     if (!position) { this.release(); return false; }
-    this.carryTarget = { position: vector(position), velocity: vector(velocity), quaternion: rotation(quaternion) };
+    const nextPosition = vector(position), nextQuaternion = rotation(quaternion);
+    const target = this.carryTarget;
+    let handVelocity = vector(velocity), handAngularVelocity = vector(angularVelocity);
+    // The player velocity alone misses the arc traced by their hands while
+    // turning. Derive it from consecutive fixed-step targets when available.
+    // Cap a wall-clamped target change so a newly blocked grip cannot fling it.
+    if (target && Number.isFinite(dt) && dt > 0 && dt <= this.maxFrame) {
+      nextPosition.vsub(target.position, handVelocity);
+      handVelocity.scale(1 / dt, handVelocity); limit(handVelocity, 12);
+      if (!angularVelocity) {
+        target.quaternion.conjugate(this._inverseRotation);
+        nextQuaternion.mult(this._inverseRotation, this._angularError);
+        const sign = this._angularError.w < 0 ? -1 : 1;
+        const angle = 2 * Math.acos(Math.min(1, Math.abs(this._angularError.w)));
+        const sine = Math.sqrt(Math.max(0, 1 - this._angularError.w ** 2));
+        const factor = (sine > 1e-5 ? sign * angle / sine : 2 * sign) / dt;
+        handAngularVelocity.set(this._angularError.x * factor, this._angularError.y * factor, this._angularError.z * factor);
+        limit(handAngularVelocity, 9);
+      }
+    }
+    this.carryTarget = { position: nextPosition, velocity: handVelocity, quaternion: nextQuaternion,
+      angularVelocity: handAngularVelocity, age: target?.age ?? 0 };
     this.releasePlayerGrace = false;
     this.cargoBody.collisionFilterMask = SOLID;
     this.cargoBody.allowSleep = false; this.cargoBody.wakeUp();
@@ -210,8 +295,8 @@ export class LabPhysics {
     const proxy = this.playerProxy;
     proxy.body.collisionFilterMask = enabled ? CARGO : 0;
     proxy.target.copy(center);
-    // Only the player proxy may be repositioned on a player portal crossing.
-    // The cargo is never moved with it or swept through all intermediate rooms.
+    // Reposition the proxy directly on a portal crossing. A held cargo crosses
+    // through teleportCargo; an unheld cargo stays where it physically is.
     if (dt <= 0 || center.distanceSquared(proxy.body.position) > 9) {
       proxy.body.position.copy(center); proxy.body.previousPosition.copy(center);
       proxy.body.velocity.setZero(); proxy.remaining = 0;
@@ -250,8 +335,18 @@ export class LabPhysics {
     if (!body || !target) return;
     target.position.vsub(body.position, this._error);
     target.velocity.vsub(body.velocity, this._force);
-    this._force.scale(18.5, this._force);
-    this._force.addScaledVector(90, this._error, this._force);
+    // Implicit critically damped spring: quick hand tracking without the
+    // overshoot of a stiff explicit spring or positional snaps. A short force
+    // onset softens pickup, while the object remains a colliding dynamic body.
+    const h = this.fixedStep, frequency = 24;
+    const spring = frequency * frequency, damping = 2 * frequency;
+    const denominator = 1 + damping * h + spring * h * h;
+    target.age += h;
+    const onset = Math.min(1, target.age / .12);
+    const gain = onset * onset * (3 - 2 * onset);
+    this._force.scale((damping + spring * h) / denominator, this._force);
+    this._force.addScaledVector(spring / denominator, this._error, this._force);
+    this._force.scale(gain, this._force);
     this._force.vsub(this.world.gravity, this._force);
     limit(this._force, 90).scale(body.mass, this._force);
     body.applyForce(this._force);
@@ -263,9 +358,11 @@ export class LabPhysics {
     const sine = Math.sqrt(Math.max(0, 1 - this._angularError.w * this._angularError.w));
     const factor = sine > 1e-5 ? sign * angle / sine : 2 * sign;
     const inertia = body.mass * this.cargoSize * this.cargoSize / 6;
-    body.torque.x += inertia * (36 * this._angularError.x * factor - 11 * body.angularVelocity.x);
-    body.torque.y += inertia * (36 * this._angularError.y * factor - 11 * body.angularVelocity.y);
-    body.torque.z += inertia * (36 * this._angularError.z * factor - 11 * body.angularVelocity.z);
+    const angularSpring = 196, angularDamping = 28;
+    const angularDenominator = 1 + angularDamping * h + angularSpring * h * h;
+    const kp = angularSpring / angularDenominator, kd = (angularDamping + angularSpring * h) / angularDenominator;
+    for (const axis of ['x', 'y', 'z']) body.torque[axis] += gain * inertia *
+      (kp * this._angularError[axis] * factor + kd * (target.angularVelocity[axis] - body.angularVelocity[axis]));
     limit(body.torque, body.mass * 8);
   }
 
@@ -326,7 +423,8 @@ export class LabPhysics {
       grounded: this.grounded, sleeping: state?.sleeping ?? false,
       releasePlayerGrace: this.releasePlayerGrace,
       speed: state?.velocity.length() ?? 0, angularSpeed: state?.angularVelocity.length() ?? 0,
-      position: state?.position.toArray() ?? null, automaticTeleports: 0,
+      position: state?.position.toArray() ?? null, automaticTeleports: 0, portalTransports: this.portalTransports,
+      carryError: this.carryTarget && this.cargoBody ? this.carryTarget.position.distanceTo(this.cargoBody.position) : 0,
     };
   }
 

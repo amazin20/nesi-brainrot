@@ -227,3 +227,52 @@ test('overlapping event and sustained cues stay smooth through trigger and clip 
     previousQuaternion.copy(visual.quaternion);
   }
 });
+
+test('carried celebrations stay supported by the hands and settle continuously after pickup', () => {
+  const { animator, visual, root, source } = makeAnimator();
+  const physics = transform(root), authored = transform(source);
+  advance(animator, 1, { carrying: true, grounded: false, celebrating: true, curious: true });
+  let maximumOffset = 0;
+  for (let frame = 0; frame < 180; frame++) {
+    animator.update({ carrying: true, grounded: false, celebrating: true, curious: true, velocity: { y: 4 } });
+    maximumOffset = Math.max(maximumOffset, visual.position.distanceTo(animator.restPosition));
+    assert.equal(animator.state, 'held'); assertFiniteBounded(animator);
+  }
+  assert.ok(maximumOffset < .003, `companion floated ${maximumOffset} metres off the supporting hands`);
+  assert.deepEqual(transform(root), physics); assert.deepEqual(transform(source), authored);
+  const heldPosition = visual.position.clone(), heldRotation = visual.quaternion.clone();
+  animator.update({ carrying: false, grounded: false, velocity: { y: -1 } });
+  assert.ok(visual.position.distanceTo(heldPosition) < .01, 'release pose snapped');
+  assert.ok(visual.quaternion.angleTo(heldRotation) < .08, 'release rotation snapped');
+});
+
+test('real tumbling suppresses decorative motion without fighting the rigid body pose', () => {
+  const { animator, visual, root } = makeAnimator(); const physics = transform(root);
+  advance(animator, 1, { grounded: false, angularVelocity: { x: 5, y: 3, z: -2 }, celebrating: true, curious: true });
+  assert.equal(animator.state, 'tumble');
+  assert.ok(visual.position.distanceTo(animator.restPosition) < 0.0001);
+  assert.ok(visual.quaternion.angleTo(animator.restQuaternion) < 0.0001);
+  assert.deepEqual(transform(root), physics);
+  advance(animator, 1, { grounded: true });
+  assert.ok(animator.diagnostics.tumbleBlend < 0.0001);
+});
+
+test('portal surprise, pickup nod and autonomous attention have smooth non-random recovery', () => {
+  for (const kind of ['pickup', 'release', 'portal', 'startle', 'nod']) {
+    const { animator, visual } = makeAnimator();
+    assert.equal(animator.trigger(kind), true);
+    let previous = visual.quaternion.clone(), maximumChange = 0;
+    for (let frame = 0; frame < 100; frame++) {
+      animator.update();
+      const change = visual.quaternion.angleTo(previous); maximumChange = Math.max(change, maximumChange);
+      assert.ok(change < .025, `${kind} reaction snapped`); previous.copy(visual.quaternion);
+    }
+    assert.ok(maximumChange > .002, `${kind} reaction was absent`);
+    assert.equal(animator.diagnostics.reaction, null);
+  }
+  const a = makeAnimator().animator, b = makeAnimator().animator;
+  advance(a, 5.2, {}, 30); advance(b, 5.2, {}, 144);
+  assert.ok(Math.abs(a.diagnostics.offset.rotation.y) > .06, 'quiet companion never looked around');
+  assert.ok(a.visual.position.distanceTo(b.visual.position) < 1e-10);
+  assert.ok(a.visual.quaternion.angleTo(b.visual.quaternion) < 1e-7);
+});

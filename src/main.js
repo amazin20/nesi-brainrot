@@ -4,6 +4,7 @@ import { LabGame } from './game/LabGame.js';
 const $ = (selector) => document.querySelector(selector);
 const query = new URLSearchParams(location.search);
 const smokeMode = query.get('smoke') === '1';
+const evidenceMode = query.get('evidence') === '1';
 const debugMode = smokeMode || query.get('debug') === '1';
 const elements = {
   game: $('#game'), loading: $('#loading'), loadingBar: $('#loading-bar'),
@@ -102,7 +103,7 @@ const game = new LabGame({
       window.__NESI_DEMO_GAME__ = game;
       window.__NESI_DEMO_DIAGNOSTIC_TIMER__ = setInterval(publishDiagnostics, 200);
     }
-    if (smokeMode) setTimeout(enterGame, 60);
+    if (smokeMode && !evidenceMode) setTimeout(enterGame, 60);
     else elements.play.focus({ preventScroll: true });
   },
   onHud: ({ chamber, hasCargo, portalsReady, friendStatus }) => {
@@ -188,4 +189,11 @@ addEventListener('unhandledrejection', (event) => {
   }
   showRuntimeError(event.reason);
 });
-game.init().catch(showRuntimeError);
+game.init().then(async () => {
+  if (evidenceMode) {
+    for (const screen of [elements.start, elements.pause, elements.win]) showScreen(screen, false);
+    game.resetRun(true); setPlayState('playing');
+    const { mountLabEvidence } = await import('./game/LabEvidence.js');
+    mountLabEvidence(game);
+  }
+}).catch(showRuntimeError);

@@ -5,13 +5,124 @@ const HALF_TURN = new THREE.Quaternion().setFromAxisAngle(WORLD_UP, Math.PI);
 export const PORTAL_HALF_WIDTH = 1.18;
 export const PORTAL_HALF_HEIGHT = 1.58;
 const PORTAL_CLIP_OFFSET = 0.025;
+const PORTAL_OUTER_SCALE = 1.10;
+
+function boxCorners(box) {
+  const result = [];
+  for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+    result.push(new THREE.Vector3(x, y, z));
+  }
+  return result;
+}
+
+function boxInPortalFrame(frame, box) {
+  const inverse = frame.quaternion.clone().invert();
+  return new THREE.Box3().setFromPoints(boxCorners(box).map(point => point.sub(frame.position).applyQuaternion(inverse)));
+}
+
+/** Does a world-space box occupy the aperture within a signed depth interval?
+ * Used both for placement clearance and for identifying a backing wall. */
+export function portalIntersectsBox(frame, box, minDepth = -0.7, maxDepth = 0.08, padding = 0) {
+  if (!box || box.isEmpty()) return false;
+  const local = boxInPortalFrame(frame, box);
+  if (local.max.z < minDepth || local.min.z > maxDepth) return false;
+  const x = THREE.MathUtils.clamp(0, local.min.x, local.max.x);
+  const y = THREE.MathUtils.clamp(0, local.min.y, local.max.y);
+  return (x / (frame.width + padding)) ** 2 + (y / (frame.height + padding)) ** 2 <= 1;
+}
+
+/** Identifies the thin panel and wall directly behind it. A floor crossing the
+ * aperture's lower edge or a freestanding obstacle must stay collidable. */
+export function portalBacksCollider(frame, box, maxDepth = .7) {
+  if (!box || box.isEmpty()) return false;
+  const local = boxInPortalFrame(frame, box);
+  return local.max.z <= .08 && local.max.z >= -maxDepth && local.min.z < .08
+    && portalIntersectsBox(frame, box, -maxDepth, .08);
+}
+
+/** True only when coplanar portal rims overlap. Separating-axis tests also
+ * support differently oriented floor/ceiling panels without a centre-ID rule. */
+export function portalFramesOverlap(a, b, gap = 0.06) {
+  if (!a || !b || Math.abs(a.normal.dot(b.normal)) < 0.995) return false;
+  if (Math.abs(b.position.clone().sub(a.position).dot(a.normal)) > 0.12) return false;
+  const inverse = a.quaternion.clone().invert();
+  const outlines = [a, b].map(frame => Array.from({ length: 64 }, (_, i) => {
+    const angle = i * Math.PI / 32;
+    return new THREE.Vector3(Math.cos(angle) * (frame.width * PORTAL_OUTER_SCALE + gap / 2),
+      Math.sin(angle) * (frame.height * PORTAL_OUTER_SCALE + gap / 2), 0)
+      .applyQuaternion(frame.quaternion).add(frame.position).sub(a.position).applyQuaternion(inverse);
+  }));
+  for (const outline of outlines) for (let i = 0; i < outline.length; i++) {
+    const edge = outline[(i + 1) % outline.length].clone().sub(outline[i]);
+    const axis = new THREE.Vector2(-edge.y, edge.x).normalize();
+    const ranges = outlines.map(points => {
+      const projected = points.map(point => point.x * axis.x + point.y * axis.y);
+      return [Math.min(...projected), Math.max(...projected)];
+    });
+    if (ranges[0][1] <= ranges[1][0] || ranges[1][1] <= ranges[0][0]) return false;
+  }
+  return true;
+}
+
+/** Planar white panel metadata: world `center`, world `normal`, optional world
+ * `portalUp`, and optional `portalBounds: { halfWidth, halfHeight }`. Without
+ * explicit bounds the mesh's transformed geometry supplies them. */
+export function resolvePortalPlacement(panel, hitPoint, { otherPortal = null, blockers = [], margin = 0.02, clampToFit = true } = {}) {
+  const data = panel?.userData;
+  if (!data?.portalable || data.portalForbidden) return { ok: false, reason: 'forbidden' };
+  if (!data.normal || !data.center) return { ok: false, reason: 'surface' };
+  const frame = makePortalFrame(data.center, data.normal, data.portalUp);
+  let bounds;
+  if (data.portalBounds) {
+    const { halfWidth, halfHeight } = data.portalBounds;
+    if (!(halfWidth > 0 && halfHeight > 0)) return { ok: false, reason: 'surface' };
+    bounds = { minX: -halfWidth, maxX: halfWidth, minY: -halfHeight, maxY: halfHeight };
+  } else {
+    panel.updateWorldMatrix(true, false);
+    panel.geometry?.computeBoundingBox();
+    if (!panel.geometry?.boundingBox) return { ok: false, reason: 'surface' };
+    const inverse = frame.quaternion.clone().invert();
+    const points = boxCorners(panel.geometry.boundingBox).map(point => point.applyMatrix4(panel.matrixWorld).sub(frame.position).applyQuaternion(inverse));
+    const box = new THREE.Box3().setFromPoints(points);
+    bounds = { minX: box.min.x, maxX: box.max.x, minY: box.min.y, maxY: box.max.y };
+  }
+  const halfWidth = frame.width * PORTAL_OUTER_SCALE + margin;
+  const halfHeight = frame.height * PORTAL_OUTER_SCALE + margin;
+  const minX = bounds.minX + halfWidth; const maxX = bounds.maxX - halfWidth;
+  const minY = bounds.minY + halfHeight; const maxY = bounds.maxY - halfHeight;
+  if (minX > maxX + 1e-8 || minY > maxY + 1e-8) return { ok: false, reason: 'too-small' };
+  const local = (hitPoint || data.center).clone().sub(frame.position).applyQuaternion(frame.quaternion.clone().invert());
+  if (!local.toArray().every(Number.isFinite)) return { ok: false, reason: 'surface' };
+  // Only hits on this panel can be adjusted. Never jump to a remote panel or
+  // replace the hit point with a fixed marker in the centre of the room.
+  if (local.x < bounds.minX - .02 || local.x > bounds.maxX + .02 || local.y < bounds.minY - .02 || local.y > bounds.maxY + .02 || Math.abs(local.z) > .2) {
+    return { ok: false, reason: 'outside' };
+  }
+  const x = THREE.MathUtils.clamp(local.x, minX, maxX); const y = THREE.MathUtils.clamp(local.y, minY, maxY);
+  const adjusted = Math.abs(x - local.x) > 1e-7 || Math.abs(y - local.y) > 1e-7;
+  if (!clampToFit && adjusted) return { ok: false, reason: 'edge' };
+  frame.position.add(new THREE.Vector3(x, y, 0).applyQuaternion(frame.quaternion));
+  frame.surfaceId = panel.uuid;
+  if (portalFramesOverlap(frame, otherPortal)) return { ok: false, reason: 'overlap' };
+  for (const blocker of blockers) {
+    const mesh = blocker.mesh || blocker;
+    if (mesh === panel || blocker.enabled === false || mesh.userData?.portalClearance === false) continue;
+    const box = blocker.box || new THREE.Box3().setFromObject(mesh);
+    // Supporting walls are behind the plane. The first 8 cm are a skin allowance;
+    // a pillar or closed door in front still prevents an unusable opening.
+    if (portalIntersectsBox(frame, box, .08, .85)) return { ok: false, reason: 'obstructed' };
+  }
+  return { ok: true, frame, position: frame.position, normal: frame.normal, adjusted, bounds };
+}
 
 /** The normal always points out of the supporting wall and into the room. */
-export function makePortalFrame(position, normal) {
+export function makePortalFrame(position, normal, preferredUp = WORLD_UP) {
   const z = normal.clone();
   if (z.lengthSq() < 1e-10) throw new Error('A portal needs a nonzero surface normal');
   z.normalize();
-  const up = Math.abs(z.dot(WORLD_UP)) > 0.99 ? new THREE.Vector3(0, 0, 1) : WORLD_UP;
+  const requestedUp = (preferredUp || WORLD_UP).clone().normalize();
+  const fallbackUp = Math.abs(z.dot(WORLD_UP)) > 0.99 ? new THREE.Vector3(0, 0, 1) : WORLD_UP;
+  const up = requestedUp.lengthSq() < .5 || Math.abs(z.dot(requestedUp)) > 0.99 ? fallbackUp : requestedUp;
   const x = up.clone().cross(z).normalize();
   const y = z.clone().cross(x).normalize();
   return {
@@ -198,10 +309,19 @@ export class LabPortals {
 
   get ready() { return this.portals.every(Boolean); }
 
-  place(index, position, normal) {
+  placeOnPanel(index, panel, hitPoint, options = {}) {
     if (index !== 0 && index !== 1) throw new Error('Portal index must be 0 or 1');
+    const placement = resolvePortalPlacement(panel, hitPoint, { ...options, otherPortal: this.portals[1 - index] });
+    if (!placement.ok) return placement;
+    const frame = this.place(index, placement.position, placement.normal, panel.userData.portalUp);
+    frame.surfaceId = panel.uuid;
+    return { ...placement, frame };
+  }
+
+  place(index, position, normal, preferredUp) {
+    if (index !== 0 && index !== 1) throw new Error('Portal index must be 0 or 1');
+    const frame = makePortalFrame(position, normal, preferredUp);
     this._remove(index);
-    const frame = makePortalFrame(position, normal);
     const color = index === 0 ? 0x38bcff : 0xffb74b;
     const group = new THREE.Group();
     group.name = index === 0 ? 'Lab aperture A' : 'Lab aperture B';

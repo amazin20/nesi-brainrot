@@ -4,10 +4,120 @@ import * as THREE from 'three';
 import {
   LabPortals, applyPortalObliqueClipping, makePortalFrame, pointInsidePortal,
   portalCrossing, portalTargetSize, portalViewportRect, transformPortalDirection, transformPortalPoint,
+  resolvePortalPlacement, portalFramesOverlap, portalIntersectsBox, portalBacksCollider,
 } from '../src/game/LabPortals.js';
 
 const vec = (x, y, z) => new THREE.Vector3(x, y, z);
 const near = (actual, expected) => assert.ok(actual.distanceTo(expected) < 1e-7, `${actual.toArray()} != ${expected.toArray()}`);
+
+function whitePanel(width = 12, height = 6) {
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(width, height, .2), new THREE.MeshBasicMaterial());
+  panel.position.set(0, height / 2, 0);
+  Object.assign(panel.userData, { portalable: true, center: vec(0, height / 2, .1), normal: vec(0, 0, 1) });
+  panel.updateMatrixWorld(true);
+  return panel;
+}
+
+test('placement follows the actual hit continuously instead of snapping to a panel centre', () => {
+  const panel = whitePanel();
+  for (const x of [-3.3, -.75, .123, 2.25]) {
+    const point = vec(x, 3.5, .1);
+    const result = resolvePortalPlacement(panel, point);
+    assert.equal(result.ok, true);
+    assert.equal(result.adjusted, false);
+    near(result.position, point);
+  }
+});
+
+test('edge adjustment keeps the complete rim on its panel and refuses off-panel hits', () => {
+  const panel = whitePanel();
+  const result = resolvePortalPlacement(panel, vec(5.99, 5.99, .1));
+  assert.equal(result.ok, true);
+  assert.equal(result.adjusted, true);
+  assert.ok(result.position.x + result.frame.width * 1.1 <= 6 - .0199);
+  assert.ok(result.position.y + result.frame.height * 1.1 <= 6 - .0199);
+  assert.equal(resolvePortalPlacement(panel, vec(5.99, 5.99, .1), { clampToFit: false }).reason, 'edge');
+  assert.equal(resolvePortalPlacement(panel, vec(9, 3, .1)).reason, 'outside');
+  assert.equal(resolvePortalPlacement(panel, vec(0, 3, 4)).reason, 'outside');
+});
+
+test('two disjoint portals may share one large panel but an overlapping replacement is atomic', () => {
+  const panel = whitePanel(); const portals = new LabPortals({ scene: new THREE.Scene() });
+  const left = portals.placeOnPanel(0, panel, vec(-3, 3, .1));
+  const right = portals.placeOnPanel(1, panel, vec(3, 3, .1));
+  assert.equal(left.ok, true); assert.equal(right.ok, true);
+  assert.equal(portals.ready, true);
+  assert.equal(portalFramesOverlap(left.frame, right.frame), false);
+  const before = portals.portals[1];
+  assert.equal(portals.placeOnPanel(1, panel, vec(-2.5, 3, .1)).reason, 'overlap');
+  assert.equal(portals.portals[1], before, 'a rejected shot erased the existing exit');
+  assert.equal(portals.ready, true);
+  portals.dispose();
+});
+
+test('forbidden and undersized surfaces cannot erase a previously valid portal', () => {
+  const panel = whitePanel(); const portals = new LabPortals({ scene: new THREE.Scene() });
+  portals.placeOnPanel(0, panel, vec(0, 3, .1)); const before = portals.portals[0];
+  panel.userData.portalable = false;
+  assert.equal(portals.placeOnPanel(0, panel, vec(0, 3, .1)).reason, 'forbidden');
+  panel.userData.portalable = true; panel.userData.portalForbidden = true;
+  assert.equal(portals.placeOnPanel(0, panel, vec(0, 3, .1)).reason, 'forbidden');
+  assert.equal(portals.placeOnPanel(0, whitePanel(2, 3), vec(0, 1.5, .1)).reason, 'too-small');
+  assert.equal(portals.portals[0], before);
+  portals.dispose();
+});
+
+test('placement rejects a blocked opening but accepts its supporting wall and floor', () => {
+  const panel = whitePanel();
+  const support = { box: new THREE.Box3(vec(-8, 0, -.5), vec(8, 8, 0)), enabled: true };
+  const floor = { box: new THREE.Box3(vec(-8, -.5, -10), vec(8, 0, 10)), enabled: true };
+  const pillar = { box: new THREE.Box3(vec(-.25, 2, .3), vec(.25, 4, 1)), enabled: true };
+  assert.equal(resolvePortalPlacement(panel, vec(0, 3, .1), { blockers: [panel, support, floor] }).ok, true);
+  assert.equal(resolvePortalPlacement(panel, vec(0, 3, .1), { blockers: [support, pillar] }).reason, 'obstructed');
+  assert.equal(resolvePortalPlacement(panel, vec(3, 3, .1), { blockers: [support, pillar] }).ok, true);
+  pillar.enabled = false;
+  assert.equal(resolvePortalPlacement(panel, vec(0, 3, .1), { blockers: [pillar] }).ok, true);
+});
+
+test('rotated and scaled panels derive bounds in their own plane, not a world AABB', () => {
+  const panel = whitePanel(6, 6); panel.scale.x = 1.5; panel.rotation.y = .73;
+  panel.updateMatrixWorld(true);
+  panel.userData.center = vec(0, 0, .1).applyMatrix4(panel.matrixWorld);
+  panel.userData.normal = vec(0, 0, 1).transformDirection(panel.matrixWorld);
+  const point = vec(1.4, .2, .1).applyMatrix4(panel.matrixWorld);
+  const result = resolvePortalPlacement(panel, point);
+  assert.equal(result.ok, true); assert.equal(result.adjusted, false);
+  near(result.position, point);
+  near(vec(0, 0, 1).applyQuaternion(result.frame.quaternion), panel.userData.normal);
+});
+
+test('floor and ceiling panel placement and momentum transforms remain orthonormal', () => {
+  const frames = [];
+  for (const sign of [-1, 1]) {
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(12, .2, 8), new THREE.MeshBasicMaterial());
+    Object.assign(panel.userData, { portalable: true, center: vec(0, sign * .1, 0), normal: vec(0, sign, 0), portalUp: vec(0, 0, 1) });
+    const point = vec(2, sign * .1, .5);
+    const result = resolvePortalPlacement(panel, point);
+    assert.equal(result.ok, true); near(result.position, point);
+    near(vec(0, 0, 1).applyQuaternion(result.frame.quaternion), panel.userData.normal);
+    frames.push(result.frame);
+  }
+  const velocity = vec(2, -8, -1);
+  const transformed = transformPortalDirection(velocity, frames[0], frames[1]);
+  assert.ok(Math.abs(transformed.length() - velocity.length()) < 1e-9);
+  near(transformPortalDirection(transformed, frames[1], frames[0]), velocity);
+});
+
+test('aperture collider tests respect the ellipse and signed plane depth', () => {
+  const frame = makePortalFrame(vec(0, 2, 0), vec(0, 0, 1));
+  assert.equal(portalIntersectsBox(frame, new THREE.Box3(vec(-2, 0, -.4), vec(2, 4, -.1))), true);
+  assert.equal(portalIntersectsBox(frame, new THREE.Box3(vec(-2, 0, -3), vec(2, 4, -2))), false);
+  assert.equal(portalIntersectsBox(frame, new THREE.Box3(vec(1.05, 3.4, -.1), vec(1.2, 3.55, .1))), false);
+  assert.equal(portalIntersectsBox(frame, new THREE.Box3(vec(-.1, 1.9, .3), vec(.1, 2.1, .5)), .08, .85), true);
+  assert.equal(portalBacksCollider(frame, new THREE.Box3(vec(-2, 0, -.4), vec(2, 4, -.1))), true);
+  assert.equal(portalBacksCollider(frame, new THREE.Box3(vec(-12, -.2, -12), vec(12, .1, 12))), false, 'the floor must not open with a wall portal');
+  assert.equal(portalBacksCollider(frame, new THREE.Box3(vec(-.1, 1.9, .3), vec(.1, 2.1, .5))), false, 'an object in front is not a backing wall');
+});
 
 test('linked aperture maps world position and conserves velocity with a half turn', () => {
   const a = makePortalFrame(vec(0, 1.5, 0), vec(0, 0, 1));

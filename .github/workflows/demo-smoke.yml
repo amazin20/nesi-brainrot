@@ -1,7 +1,7 @@
 name: Playable demo smoke
 on:
   push:
-    branches: [main, playable-demo-v1]
+    branches: [main, playable-demo-v1, animation-v4]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -9,7 +9,7 @@ permissions:
 jobs:
   demo-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,7 +41,7 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import { ALL_LAB_ASSETS } from './src/game/labAssets.js';
-          if (ALL_LAB_ASSETS.length !== 14) throw new Error('Expected 14 active models');
+          if (ALL_LAB_ASSETS.length !== 19) throw new Error('Expected 19 active models');
           for (const asset of ALL_LAB_ASSETS) {
             if (!fs.existsSync('dist/models/' + asset.file)) throw new Error('Missing ' + asset.file);
           }
@@ -64,9 +64,7 @@ jobs:
           name: playable-demo-smoke
           path: |
             smoke-artifacts/report.json
-            smoke-artifacts/lab-third-person.png
+            smoke-artifacts/*.png
             smoke-artifacts/player-animation.mp4
-            smoke-artifacts/weapon-grip.png
-            smoke-artifacts/carry-pose.png
             smoke-artifacts/recording-fallback/
           if-no-files-found: warn

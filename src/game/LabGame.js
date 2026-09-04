@@ -6,10 +6,11 @@ import { AudioController } from './AudioController.js';
 import { LabCamera } from './LabCamera.js';
 import { LabPlayerAnimator } from './LabPlayerAnimator.js';
 import { LabHeldDevice } from './LabHeldDevice.js';
-import { LabPortals } from './LabPortals.js';
+import { LabPortals, portalBacksCollider, transformPortalPoint } from './LabPortals.js';
 import { LabPhysics } from './LabPhysics.js';
 import { buildLabArchitecture } from './LabLevel.js';
 import { LabCompanionAnimator } from './LabCompanionAnimator.js';
+import { LabDoorMechanism, LabBarrierMechanism } from './LabMechanisms.js';
 import { LAB_ASSETS } from './labAssets.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -36,7 +37,9 @@ export class LabGame {
     this.callbacks = { onProgress, onReady, onHud, onToast, onPause, onWin };
     this.assets = new Map(); this.failures = [];
     this.colliders = []; this.cameraBlockers = []; this.aimBlockers = []; this.portalPanels = [];
-    this.floors = []; this.sectorProps = [[], [], []]; this.cubes = []; this.doors = [];
+    this.floors = []; this.ramps = []; this.sectorProps = [[], [], []]; this.cubes = []; this.doors = [];
+    this.carryGripTargets = { left: new THREE.Vector3(), right: new THREE.Vector3() };
+    this.portalCargoColliders = new Set();
     this.state = 'loading'; this.elapsed = 0; this.stage = 0; this.thirdPerson = true;
     this.playerPosition = new THREE.Vector3(); this.playerVelocity = new THREE.Vector3();
     this.previousPlayerPosition = new THREE.Vector3(); this.previousFacing = Math.PI;
@@ -103,7 +106,7 @@ export class LabGame {
       while (queue.length) {
         const asset = queue.shift();
         try {
-          const gltf = await loader.loadAsync(base + 'models/' + asset.file);
+          const gltf = await loader.loadAsync(base + 'models/' + (asset.id >= 23 ? 'lod/' : '') + asset.file);
           gltf.scene.traverse(object => {
             if (!object.isMesh) return;
             for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
@@ -186,6 +189,44 @@ export class LabGame {
     return model;
   }
 
+  collisionProxy(bounds, { kinematic = false, aim = true } = {}) {
+    const size = bounds.getSize(new THREE.Vector3()), center = bounds.getCenter(new THREE.Vector3());
+    const mesh = this.box(center.x, center.y, center.z, size.x, size.y, size.z, this.materials.dark, { solid: true, aim });
+    mesh.visible = false; mesh.userData.collisionProxy = true;
+    const collider = this.colliders.at(-1); collider.kinematic = kinematic;
+    return collider;
+  }
+
+  syncCollision(collider, bounds, dt) {
+    const oldSize = collider.box.getSize(new THREE.Vector3()), size = bounds.getSize(new THREE.Vector3());
+    collider.mesh.position.copy(bounds.getCenter(new THREE.Vector3()));
+    if (oldSize.distanceToSquared(size) > 1e-10) {
+      collider.mesh.geometry.dispose(); collider.mesh.geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+    }
+    collider.mesh.updateWorldMatrix(true, false); collider.box.copy(bounds);
+    this.physics?.updateStaticBox(collider.mesh.uuid, bounds, dt, collider.enabled);
+  }
+
+  addPortalPanel(x, z, sign, stage, width = 6.8, height = 4.6) {
+    const art = this.addProp(24, height, [x - sign * .05, 0, z], stage, sign * Math.PI / 2, { height: true });
+    art.updateWorldMatrix(true, true);
+    const bounds = new THREE.Box3().setFromObject(art), dimensions = bounds.getSize(new THREE.Vector3());
+    art.scale.x *= width / dimensions.z; art.scale.z *= .10 / dimensions.x;
+    art.updateWorldMatrix(true, true);
+    const panel = this.box(x + sign * .025, height / 2, z, .08, height, width,
+      this.materials.wall, { solid: true });
+    panel.visible = false; panel.userData.collisionProxy = true;
+    panel.userData.portalable = true; panel.userData.stage = stage;
+    panel.userData.normal = new THREE.Vector3(sign, 0, 0);
+    panel.userData.center = new THREE.Vector3(x + sign * .075, 1.68, z);
+    // The geometric centre differs from the useful waist-height aiming mark.
+    panel.userData.portalBounds = undefined;
+    this.portalPanels.push(panel);
+    this.box(x + sign * .02, .055, z, .15, .11, width + .12, this.materials.cyan, { camera: false, aim: false });
+    this.label('БЕЛАЯ ПАНЕЛЬ • ПРОХОД', x + sign * .15, height + .35, z, width - .3, '#d8fbff', sign * Math.PI / 2);
+    return panel;
+  }
+
   buildLevel() {
     this.mechanisms = buildLabArchitecture(this);
     this.launchPad = this.mechanisms.launchPad;
@@ -194,10 +235,18 @@ export class LabGame {
       this.box(-7.6, 4.5, z, 9, 9, .4, this.materials.wall, { solid: true });
       this.box(7.6, 4.5, z, 9, 9, .4, this.materials.wall, { solid: true });
       this.box(0, 7.15, z, 6.18, 3.7, .4, this.materials.dark, { solid: true });
-      const doorMesh = this.box(0, 2.5, z, 6.2, 5, .38, this.materials.dark, { solid: true });
-      const collider = this.colliders.at(-1); collider.kinematic = true;
       const art = this.addProp(17, 5.2, [0, 0, z + .22], index, 0, { height: true });
-      const door = { mesh: doorMesh, collider, art, z, opened: false, progress: 0, previousProgress: 0, contact: 0 };
+      const mechanism = new LabDoorMechanism(art);
+      const leafColliders = mechanism.getLeafBoxes().map(box => this.collisionProxy(box, { kinematic: true }));
+      const frameColliders = mechanism.getFrameBoxes().map(box => this.collisionProxy(box));
+      // Fill between the authored frame and the room shell; no side shortcut.
+      const full = mechanism.bounds.clone().applyMatrix4(art.matrixWorld);
+      for (const sign of [-1, 1]) {
+        const edge = sign < 0 ? -full.min.x : full.max.x;
+        if (edge < 3.1) this.box(sign * (edge + 3.1) / 2, 2.6, z, 3.1 - edge, 5.2, .4, this.materials.dark, { solid: true });
+      }
+      const door = { mesh: leafColliders[0].mesh, collider: leafColliders[0], leafColliders, frameColliders,
+        mechanism, art, z, opened: false, progress: 0, previousProgress: 0, contact: 0 };
       this.doors.push(door);
       this.label(chamber.name.split(' / ')[1], 0, 6.25, z + .28, 5.8, '#e6fbff');
       const ring = new THREE.Mesh(new THREE.TorusGeometry(.86, .06, 12, 48), new THREE.MeshBasicMaterial({ color: 0xffbd69 }));
@@ -206,17 +255,13 @@ export class LabGame {
       const pad = this.addProp(18, 1.85, chamber.button, index);
       const padHeight = new THREE.Box3().setFromObject(pad).getSize(new THREE.Vector3()).y;
       pad.scale.y *= .12 / Math.max(.01, padHeight);
-      for (const [x, y, pz, sign] of chamber.panels) {
-        const panel = this.box(x, y + .1, pz, .12, 3.6, 4.1, this.materials.wall, { solid: true });
-        panel.userData.portalable = true; panel.userData.stage = index;
-        panel.userData.normal = new THREE.Vector3(sign, 0, 0);
-        panel.userData.center = new THREE.Vector3(x + sign * .09, y, pz);
-        this.portalPanels.push(panel);
-        const frameProp = this.addProp(16, 4, [x - sign * .12, 0, pz], index, sign * Math.PI / 2);
-        frameProp.scale.z *= .14;
-        this.label('ПРОХОД ДЛЯ ИГРОКА', x + sign * .2, 4.25, pz, 3.8, '#54c5d5', sign * Math.PI / 2);
-      }
+      for (const [x, , pz, sign] of chamber.panels) this.addPortalPanel(x, pz, sign, index);
     });
+    // Alternate sides and elevated viewpoints permit several solutions.
+    for (const [stage, z] of [[0, 18], [0, 1], [1, -9], [1, -22], [2, -30], [2, -43]]) {
+      const sign = stage === 1 ? 1 : stage === 2 && z < -40 ? 1 : -1;
+      this.addPortalPanel(-sign * 11.65, z, sign, stage, 5.8);
+    }
     this.playerGroup = new THREE.Group();
     this.playerVisual = this.model(1, PLAYER_HEIGHT, true);
     this.playerGroup.add(this.playerVisual); this.scene.add(this.playerGroup);
@@ -228,13 +273,16 @@ export class LabGame {
     this.portals = new LabPortals({ scene: this.scene, renderer: this.renderer, camera: this.camera });
     const group = new THREE.Group(); group.name = 'Persistent brainrot companion';
     const visual = new THREE.Group(); const brainrot = this.model(2, .82);
+    brainrot.name = 'Companion source mesh — no visible collider';
     brainrot.position.y = -CUBE_RADIUS; visual.add(brainrot); group.add(visual); this.scene.add(group);
     this.cargo = { group, visual, position: new THREE.Vector3(...CARGO_START), velocity: new THREE.Vector3(), quaternion: new THREE.Quaternion(), stage: 0 };
     this.cubes = [this.cargo];
     this.companionAnimator = new LabCompanionAnimator({ visual });
     this.physics = new LabPhysics({ fixedStep: FIXED_STEP });
+    this.mechanisms.barrier.mechanism = new LabBarrierMechanism(this.mechanisms.barrier.art);
     for (const moving of [...this.mechanisms.bridges, this.mechanisms.lift, this.mechanisms.barrier]) moving.collider.kinematic = true;
     for (const collider of this.colliders) this.physics.addStaticBox(collider.mesh.uuid, collider.box, { kinematic: Boolean(collider.kinematic) });
+    for (const ramp of this.ramps) this.physics.addStaticRamp(ramp.id, ramp);
     this.physics.createCargo({ position: this.cargo.position, size: CUBE_RADIUS * 2, mass: 3.2 });
     this.createOverlay(); this.resetRun(false);
   }
@@ -286,28 +334,33 @@ export class LabGame {
   placePortal(index) {
     if (this.state !== 'playing') return false;
     if (this.heldCube) { this.callbacks.onToast('Отпусти куб [E], чтобы взять пушку'); return false; }
-    this.aimingTime = 1.1;
+    // Shooting animates only the hand/device. Camera framing belongs to F.
     this.animator?.triggerShot?.(); this.heldDevice?.fire(index);
     this.scene.updateMatrixWorld(true);
     this.raycaster.setFromCamera(new THREE.Vector2(), this.camera);
-    const hit = this.raycaster.intersectObjects(this.aimBlockers, false).find(h => h.object.visible);
+    const hit = this.raycaster.intersectObjects(this.aimBlockers, true).find(h =>
+      (h.object.visible || h.object.userData.collisionProxy) &&
+      this.colliders.find(c => c.mesh === h.object)?.enabled !== false);
     if (!hit?.object.userData.portalable) {
       this.callbacks.onToast('Наведи прицел на белую фазовую панель'); return false;
     }
-    if (!this.placeOnPanel(index, hit.object)) return false;
+    if (!this.placeOnPanel(index, hit.object, hit.point)) return false;
     this.audio.tone(index ? 450 : 680, .13, 'sine', .04);
     return true;
   }
 
   isAiming() {
-    return !this.heldCube && Boolean(this.aimHeld || this.input?.keys.has('KeyF') || this.aimingTime > 0);
+    return !this.heldCube && Boolean(this.aimHeld || this.input?.keys.has('KeyF'));
   }
 
-  placeOnPanel(index, panel) {
-    if (this.portalSurfaceIds[1 - index] === panel.uuid) {
-      this.callbacks.onToast('Второй проход должен быть на другой панели'); return false;
+  placeOnPanel(index, panel, hitPoint = panel.userData.center) {
+    const result = this.portals.placeOnPanel(index, panel, hitPoint, { blockers: this.colliders });
+    if (!result.ok) {
+      this.callbacks.onToast(result.reason === 'overlap' ? 'Раздвинь проходы немного дальше'
+        : result.reason === 'obstructed' ? 'Перед проходом нужно свободное место'
+          : 'Здесь проход не помещается. Выбери свободную белую панель');
+      return false;
     }
-    this.portals.place(index, panel.userData.center, panel.userData.normal);
     this.portalSurfaceIds[index] = panel.uuid;
     this.callbacks.onToast(this.portals.ready ? 'Пара связана. Войди в любой проход' : 'Первый проход готов. Установи второй');
     return true;
@@ -316,6 +369,8 @@ export class LabGame {
   start() { this.audio.unlock(); this.resetRun(true); this.renderer.domElement.requestPointerLock?.()?.catch?.(() => {}); }
   restart() { this.resetRun(true); this.callbacks.onPause(false); }
   resetRun(playing = true) {
+    for (const id of this.portalCargoColliders) this.physics.setStaticEnabled(id, true);
+    this.portalCargoColliders.clear();
     this.state = playing ? 'playing' : 'ready'; this.stage = 0; this.elapsed = 0; this.teleportCount = 0;
     this.heldCube = null; this.portalCooldown = 0; this.portals.clear(); this.portalSurfaceIds = [null, null];
     this.launchTime = 0; this.aimHeld = false; this.aimingTime = 0; this.completedStages = 0;
@@ -396,7 +451,7 @@ export class LabGame {
     const move = this.input.getMove();
     const aiming = this.isAiming();
     const sprint = this.input.keys.has('ShiftLeft') && !this.heldCube && !aiming;
-    const speed = this.heldCube ? 3.4 : aiming ? 2.8 : sprint ? 6.6 : 4.3;
+    const speed = this.heldCube ? 2.9 : aiming ? 2.55 : sprint ? 5.0 : 3.3;
     const desired = new THREE.Vector3(move.x, 0, move.y).applyAxisAngle(UP, this.yaw).multiplyScalar(speed);
     const acceleration = this.playerGrounded ? (move.lengthSq() ? 10.5 : 15) : 3;
     this.playerVelocity.x = THREE.MathUtils.damp(this.playerVelocity.x, desired.x, acceleration, dt);
@@ -405,17 +460,25 @@ export class LabGame {
     this.coyoteTime = this.playerGrounded ? .1 : Math.max(0, this.coyoteTime - dt);
     this.jumpBuffer = this.input.consumeJump() ? .12 : Math.max(0, this.jumpBuffer - dt);
     if (this.jumpBuffer > 0 && this.coyoteTime > 0) {
-      this.playerVelocity.y = 6.8; this.playerGrounded = false; this.coyoteTime = this.jumpBuffer = 0;
+      this.playerVelocity.y = 7.8; this.playerGrounded = false; this.coyoteTime = this.jumpBuffer = 0;
       this.animator.triggerJump?.(); this.audio.jump();
     }
     this.playerVelocity.y -= 19.5 * dt;
     this.playerPosition.addScaledVector(this.playerVelocity, dt);
     const center = this.playerPosition.clone().addScaledVector(UP, CENTER_HEIGHT);
     const previousCenter = previous.clone().addScaledVector(UP, CENTER_HEIGHT);
-    const teleport = !this.heldCube && this.portalCooldown <= 0 ? this.portals.tryTeleport(center, previousCenter, this.playerVelocity, PLAYER_RADIUS) : null;
+    const teleport = this.portalCooldown <= 0 ? this.portals.tryTeleport(center, previousCenter, this.playerVelocity, PLAYER_RADIUS) : null;
     this.groundedByCollider = false;
     const downwardImpact = Math.max(0, -this.playerVelocity.y);
     if (teleport) {
+      if (this.heldCube) {
+        const entry = this.portals.portals[teleport.entryIndex], exit = this.portals.portals[teleport.exitIndex];
+        const exitShift = teleport.position.clone().sub(transformPortalPoint(center, entry, exit));
+        const cargoPosition = transformPortalPoint(this.cargo.position, entry, exit).add(exitShift);
+        this.physics.teleportCargo({ position: cargoPosition, rotation: teleport.rotation });
+        this.cargo.position.copy(cargoPosition);
+        this.companionAnimator.trigger('portal');
+      }
       this.playerPosition.copy(teleport.position).addScaledVector(UP, -CENTER_HEIGHT);
       this.playerVelocity.copy(teleport.velocity);
       const view = new THREE.Vector3(0, 0, -1).applyAxisAngle(UP, this.yaw).applyQuaternion(teleport.rotation);
@@ -426,7 +489,7 @@ export class LabGame {
       this.previousPlayerPosition.copy(this.playerPosition); this.previousFacing = this.facing;
       this.cameraRig.reset(this.playerPosition, this.yaw, this.pitch);
       this.audio.tone(620, .12, 'triangle', .035);
-    } else this.resolveBody(this.playerPosition, previous, this.playerVelocity, PLAYER_RADIUS, PLAYER_HEIGHT, !this.heldCube);
+    } else this.resolveBody(this.playerPosition, previous, this.playerVelocity, PLAYER_RADIUS, PLAYER_HEIGHT, true);
     this.playerGrounded = Boolean(this.groundedByCollider);
     if (this.playerGrounded && !wasGrounded && downwardImpact > 1) {
       this.animator.triggerLanding(downwardImpact); this.lastLanding = downwardImpact;
@@ -458,6 +521,12 @@ export class LabGame {
       const y = f.y ?? 0;
       if (f.enabled !== false && y <= maxY + .001 && x >= f.minX && x <= f.maxX && z >= f.minZ && z <= f.maxZ) height = height === null ? y : Math.max(height, y);
     }
+    for (const ramp of this.ramps) {
+      if (x < ramp.minX || x > ramp.maxX || z < ramp.minZ || z > ramp.maxZ) continue;
+      const t = (z - ramp.minZ) / (ramp.maxZ - ramp.minZ);
+      const y = THREE.MathUtils.lerp(ramp.lowY, ramp.highY, ramp.highAt === 'minZ' ? 1 - t : t);
+      if (y <= maxY + .001) height = height === null ? y : Math.max(height, y);
+    }
     return height;
   }
 
@@ -468,7 +537,7 @@ export class LabGame {
       const planeDistance = Math.abs(center.clone().sub(portal.position).dot(portal.normal));
       if (planeDistance > radius + .7) return false;
       // The aperture opens both its thin white panel and the structural wall behind it.
-      return collider.mesh.uuid === this.portalSurfaceIds[index] || (Math.abs(portal.normal.x) > .9 && Math.abs(collider.box.getCenter(new THREE.Vector3()).x) > 11.8);
+      return collider.mesh.uuid === this.portalSurfaceIds[index] || portalBacksCollider(portal, collider.box);
     });
   }
 
@@ -524,7 +593,7 @@ export class LabGame {
     if (this.state !== 'playing') return false;
     if (this.heldCube) {
       this.physics.release(); this.heldCube = null;
-      this.animator.triggerInteraction('place'); this.companionAnimator.trigger('curious');
+      this.animator.triggerInteraction('place'); this.companionAnimator.trigger('release');
       return true;
     }
     const origin = this.playerPosition.clone().addScaledVector(UP, 1.1);
@@ -536,7 +605,7 @@ export class LabGame {
     this.raycaster.far = Infinity;
     if (blocked) { this.callbacks.onToast('Между вами препятствие'); return false; }
     this.heldCube = this.cargo; this.aimingTime = 0; this.aimHeld = false;
-    this.animator.triggerInteraction('pickup'); this.companionAnimator.trigger('curious'); this.audio.pickup();
+    this.animator.triggerInteraction('pickup'); this.companionAnimator.trigger('pickup'); this.audio.pickup();
     return true;
   }
 
@@ -544,15 +613,33 @@ export class LabGame {
     if (this.heldCube) {
       const forward = new THREE.Vector3(Math.sin(this.facing), 0, Math.cos(this.facing));
       const origin = this.playerPosition.clone().addScaledVector(UP, 1.06);
-      const target = origin.clone().addScaledVector(forward, .95);
+      const target = origin.clone().addScaledVector(forward, .72);
       this.raycaster.set(origin, forward); this.raycaster.far = 1.3;
-      const hit = this.raycaster.intersectObjects(this.cameraBlockers, false)[0]; this.raycaster.far = Infinity;
+      const hit = this.raycaster.intersectObjects(this.cameraBlockers, false).find(h => {
+        const collider = this.colliders.find(c => c.mesh === h.object);
+        return !collider || !this.portalOpensCollider(collider, origin, CUBE_RADIUS);
+      }); this.raycaster.far = Infinity;
       if (hit) target.copy(origin).addScaledVector(forward, Math.max(.06, hit.distance - CUBE_RADIUS - .07));
       const quaternion = new THREE.Quaternion().setFromAxisAngle(UP, this.facing);
-      this.physics.setCarryTarget(target, { velocity: this.playerVelocity, quaternion });
+      this.physics.setCarryTarget(target, { velocity: this.playerVelocity, quaternion, dt });
       // Blocked objects are released where they actually are, never snapped to the player.
       if (this.cargo.position.distanceTo(origin) > 3.2) { this.physics.release(); this.heldCube = null; this.animator.triggerInteraction('place'); }
     }
+    // Only the held companion may share the player's aperture. Everywhere
+    // outside that opening the same wall continues to collide with cargo.
+    const nextPortalColliders = new Set();
+    if (this.heldCube && this.portals.ready) {
+      for (const collider of this.colliders) if (collider.enabled &&
+        (this.portalOpensCollider(collider, this.cargo.position, CUBE_RADIUS) ||
+          this.portalOpensCollider(collider, this.playerPosition.clone().addScaledVector(UP, 1.2), PLAYER_RADIUS))) {
+        nextPortalColliders.add(collider.mesh.uuid);
+        this.physics.setStaticEnabled(collider.mesh.uuid, false);
+      }
+    }
+    for (const id of this.portalCargoColliders) if (!nextPortalColliders.has(id)) {
+      this.physics.setStaticEnabled(id, this.colliders.find(c => c.mesh.uuid === id)?.enabled !== false);
+    }
+    this.portalCargoColliders = nextPortalColliders;
     this.physics.setPlayerProxy({ position: this.playerPosition, radius: PLAYER_RADIUS, height: PLAYER_HEIGHT, velocity: this.playerVelocity }, dt);
     this.physics.step(dt);
     const sample = this.physics.sample(1);
@@ -588,9 +675,10 @@ export class LabGame {
     }
     barrier.previousProgress = barrier.progress;
     barrier.progress = THREE.MathUtils.damp(barrier.progress, barrier.opened ? 1 : 0, 3.2, dt);
-    barrier.mesh.position.y = barrier.baseY + barrier.progress * 5.8; barrier.art.position.y = barrier.artBaseY + barrier.progress * 5.8;
-    barrier.mesh.updateWorldMatrix(true, false); barrier.collider.box.setFromObject(barrier.mesh);
-    this.physics?.updateStaticBox(barrier.mesh.uuid, barrier.collider.box, dt);
+    barrier.mechanism?.update(barrier.progress, this.visualTime);
+    barrier.collider.enabled = barrier.progress < .92;
+    this.physics?.setStaticEnabled(barrier.mesh.uuid, barrier.collider.enabled);
+    barrier.mesh.visible = false;
     const color = barrier.opened ? 0x73dabb : 0xffbb63;
     barrier.indicator.material.color.setHex(color); this.mechanisms.chargePad.ring.material.color.setHex(color);
     barrier.links.forEach(l => l.material.color.setHex(color));
@@ -614,9 +702,13 @@ export class LabGame {
       }
       door.previousProgress = door.progress;
       door.progress = THREE.MathUtils.damp(door.progress, door.opened ? 1 : 0, 3.4, dt);
-      door.mesh.position.y = 2.5 + 5.5 * door.progress; door.art.position.y = 5.5 * door.progress;
-      door.mesh.updateWorldMatrix(true, false); door.collider.box.setFromObject(door.mesh);
-      this.physics?.updateStaticBox(door.mesh.uuid, door.collider.box, dt);
+      if (door.mechanism) {
+        door.mechanism.update(door.progress);
+        door.mechanism.getLeafBoxes(door.progress).forEach((box, i) => this.syncCollision(door.leafColliders[i], box, dt));
+      } else {
+        door.collider.enabled = door.progress < .92;
+        this.physics?.setStaticEnabled(door.mesh.uuid, door.collider.enabled);
+      }
       const color = door.opened ? 0x73dabb : 0xffbb63;
       door.buttonRing.material.color.setHex(color); this.mechanisms.doorLinks[index].material.color.setHex(color);
     });
@@ -629,20 +721,28 @@ export class LabGame {
     const blend = THREE.MathUtils.clamp(alpha, 0, 1);
     this.playerGroup.position.lerpVectors(this.previousPlayerPosition, this.playerPosition, blend);
     this.playerGroup.rotation.y = this.previousFacing + Math.atan2(Math.sin(this.facing - this.previousFacing), Math.cos(this.facing - this.previousFacing)) * blend;
-    this.animator.update({ dt: visualDt, ...(this.motion ?? {}), velocity: this.playerVelocity, grounded: this.playerGrounded,
-      carrying: Boolean(this.heldCube), phase: this.portalCooldown > .2, elapsed: this.visualTime, weapon: true, aiming: this.isAiming(), aimPitch: this.pitch });
-    this.heldDevice.update({ dt: visualDt, carrying: Boolean(this.heldCube) }); this.animationFrames++;
     const cargo = this.physics.sample(blend);
     this.cargo.group.position.copy(cargo.position); this.cargo.group.quaternion.copy(cargo.quaternion);
-    this.companionAnimator.update({ dt: visualDt, elapsed: this.visualTime, speed: cargo.velocity.length(), velocity: cargo.velocity, grounded: cargo.grounded, curious: Boolean(this.heldCube) });
+    this.companionAnimator.update({ dt: visualDt, elapsed: this.visualTime, speed: cargo.velocity.length(),
+      velocity: cargo.velocity, angularVelocity: cargo.angularVelocity, impact: cargo.impact,
+      grounded: cargo.grounded, carrying: Boolean(this.heldCube), curious: this.playerPosition.distanceTo(this.cargo.position) < 2.5 });
+    const gripVisual = this.cargo.visual ?? this.cargo.group;
+    gripVisual.updateWorldMatrix(true, true);
+    gripVisual.localToWorld(this.carryGripTargets.left.set(-.20, -.015, -.20));
+    gripVisual.localToWorld(this.carryGripTargets.right.set(.20, -.015, -.20));
+    this.animator.update({ dt: visualDt, ...(this.motion ?? {}), velocity: this.playerVelocity, grounded: this.playerGrounded,
+      carrying: Boolean(this.heldCube), carryGripTargets: this.heldCube ? this.carryGripTargets : null,
+      lookTarget: this.playerPosition.distanceTo(this.cargo.position) < 3.2 ? this.cargo.group.position : null,
+      phase: this.portalCooldown > .2, elapsed: this.visualTime, weapon: true, aiming: this.isAiming(), aimPitch: this.pitch });
+    this.heldDevice.update({ dt: visualDt, carrying: Boolean(this.heldCube) }); this.animationFrames++;
     for (const moving of [...this.mechanisms.bridges, this.mechanisms.lift]) moving.group.position.y = THREE.MathUtils.lerp(moving.previousY, moving.y, blend);
     this.doors.forEach(door => {
       const progress = THREE.MathUtils.lerp(door.previousProgress, door.progress, blend);
-      door.mesh.position.y = 2.5 + 5.5 * progress; door.art.position.y = 5.5 * progress;
+      door.mechanism?.update(progress);
     });
     const barrier = this.mechanisms.barrier;
     const barrierProgress = THREE.MathUtils.lerp(barrier.previousProgress ?? barrier.progress, barrier.progress, blend);
-    barrier.mesh.position.y = barrier.baseY + barrierProgress * 5.8; barrier.art.position.y = barrier.artBaseY + barrierProgress * 5.8;
+    barrier.mechanism?.update(barrierProgress, this.visualTime);
     this.cameraRig.update({ dt: visualDt, target: this.playerGroup.position, yaw: this.yaw, pitch: this.pitch, velocity: this.playerVelocity, aiming: this.isAiming() });
     this.camera.getWorldDirection(this.cameraForward);
     // The light and shadow frustum stay fixed across the complete level.

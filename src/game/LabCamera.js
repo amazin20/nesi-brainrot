@@ -52,6 +52,8 @@ export class LabCamera {
     this.distance = 6.5;
     this.distanceVelocity = 0;
     this.fovVelocity = 0;
+    this.aimBlend = 0;
+    this.aimBlendVelocity = 0;
     this.initialized = false;
     this.obstructed = false;
   }
@@ -67,6 +69,8 @@ export class LabCamera {
     this.distance = 6.5;
     this.distanceVelocity = 0;
     this.fovVelocity = 0;
+    this.aimBlend = 0;
+    this.aimBlendVelocity = 0;
     this.camera.fov = 62;
     this.camera.updateProjectionMatrix();
     this.initialized = true;
@@ -99,6 +103,12 @@ export class LabCamera {
     [this.pitch, this.pitchVelocity] = spring(
       this.pitch, this.pitchVelocity, THREE.MathUtils.clamp(pitch, -0.72, 0.3), 38, step,
     );
+    // A shot must never move the whole frame. Even an explicit aim change moves
+    // the shoulder and boom continuously instead of switching their direction
+    // in one frame (which used to look like recoil despite a smooth FOV).
+    [this.aimBlend, this.aimBlendVelocity] = spring(
+      this.aimBlend, this.aimBlendVelocity, aiming ? 1 : 0, 12, step,
+    );
     const fovGoal = aiming ? 59.5 : 62 + THREE.MathUtils.clamp((speed - 4) * 0.4, 0, 2.2);
     const oldFov = this.camera.fov;
     [this.camera.fov, this.fovVelocity] = spring(oldFov, this.fovVelocity, fovGoal, 7, step);
@@ -106,9 +116,9 @@ export class LabCamera {
 
     this.forward.set(0, 0, -1).applyEuler(this.euler.set(this.pitch, this.yaw, 0, 'YXZ'));
     this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    const length = aiming ? 5.7 : 6.5;
+    const length = THREE.MathUtils.lerp(6.5, 5.7, this.aimBlend);
     this.desired.copy(this.focus).addScaledVector(this.forward, -length)
-      .addScaledVector(this.right, aiming ? 0.78 : 0.62);
+      .addScaledVector(this.right, THREE.MathUtils.lerp(0.62, 0.78, this.aimBlend));
     for (const object of this.blockers) object.updateWorldMatrix(true, true);
 
     // Resolve both the smoothed pivot and the actual player. The latter matters
