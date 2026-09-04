@@ -53,7 +53,8 @@
         background: rgba(13, 28, 47, .82);
         box-shadow: 0 18px 55px rgba(0, 0, 0, .26);
       }
-      article img { display: block; width: 100%; aspect-ratio: 9 / 10; object-fit: cover; object-position: top center; background: #14243a; }
+      article img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; object-position: center; background: #14243a; }
+      article a { color: #67c7ff; text-underline-offset: 3px; }
       article div { padding: 1rem; }
       h2 { margin: 0 0 .3rem; font-size: 1rem; }
       p { margin: 0; color: #9db4c9; font-size: .9rem; line-height: 1.45; }
@@ -67,23 +68,26 @@
   </head>
   <body>
     <header>
-      <h1><span class="blue">BRAINROT</span> <span class="orange">LAB</span> / 11 моделей</h1>
-      <a href="./?mode=rift">Открыть Rift Lab от третьего лица</a>
+      <h1><span class="blue">BRAINROT</span> <span class="orange">LAB</span> / 14 моделей</h1>
+      <a href="./?mode=lab">Играть от третьего лица</a>
     </header>
     <main>
-      <p class="intro">Все карточки ниже — отдельные снимки реальных GLB-файлов, находящихся в демке. Геометрия моделей не переделывалась.</p>
+      <p class="intro">Игрок, брейнрот и пушка сохранены. Старые модели 03–10 удалены из демки, добавлены 11 новых объектов. На карточках — отдельные рендеры игровых GLB. Новое окружение оптимизировано для браузера с сохранением исходных текстур. Нажми на изображение, чтобы открыть его полностью.</p>
       <section class="grid" aria-label="Каталог моделей">
-        <article><img src="./model-screens/model-01.png" alt="Модель 1 — игрок" loading="lazy" /><div><h2>01 · Игрок</h2><p>Исходный персонаж, выставлен в лаборатории как тестовый объект.</p></div></article>
-        <article><img src="./model-screens/model-02.png" alt="Модель 2 — груз" loading="lazy" /><div><h2>02 · Brainrot-куб</h2><p>Физический груз внутри прозрачного куба: его нужно донести до кнопки.</p></div></article>
-        <article><img src="./model-screens/model-03.png" alt="Модель 3 — подвесной молот" loading="lazy" /><div><h2>03 · Подвесной механизм</h2><p>Индустриальный реквизит испытательной камеры.</p></div></article>
-        <article><img src="./model-screens/model-04.png" alt="Модель 4 — кнопка" loading="lazy" /><div><h2>04 · Кнопка</h2><p>Нажимная платформа, открывающая дверь к выходу.</p></div></article>
-        <article><img src="./model-screens/model-05.png" alt="Модель 5 — выходная арка" loading="lazy" /><div><h2>05 · Выходная арка</h2><p>Финальная точка тестовой камеры.</p></div></article>
-        <article><img src="./model-screens/model-06.png" alt="Модель 6 — финишный флаг" loading="lazy" /><div><h2>06 · Финишный флаг</h2><p>Маркер завершения уровня.</p></div></article>
-        <article><img src="./model-screens/model-07.png" alt="Модель 7 — вращающийся механизм" loading="lazy" /><div><h2>07 · Вращающийся механизм</h2><p>Движущаяся деталь оборудования лаборатории.</p></div></article>
-        <article><img src="./model-screens/model-08.png" alt="Модель 8 — ролик" loading="lazy" /><div><h2>08 · Ролик</h2><p>Часть технической зоны камеры.</p></div></article>
-        <article><img src="./model-screens/model-09.png" alt="Модель 9 — ограждения" loading="lazy" /><div><h2>09 · Ограждения</h2><p>Безопасные границы и маршрут игрока.</p></div></article>
-        <article><img src="./model-screens/model-10.png" alt="Модель 10 — платформа" loading="lazy" /><div><h2>10 · Платформа</h2><p>Основа для лабораторных конструкций и пьедесталов.</p></div></article>
-        <article><img src="./model-screens/model-11.png" alt="Модель 11 — резонатор разломов" loading="lazy" /><div><h2>11 · Резонатор разломов</h2><p>Парящий инструмент рядом с игроком: ставит один маяк и строит к нему фазовый маршрут.</p></div></article>
+        <article><a href="./model-screens/model-01.png?v=lab-models-v1"><img src="./model-screens/model-01.png?v=lab-models-v1" alt="Модель 1 — игрок" loading="lazy" /></a><div><h2>01 · Игрок</h2><p>Управляемый персонаж: камера от третьего лица.</p></div></article>
+        <article><a href="./model-screens/model-02.png?v=lab-models-v1"><img src="./model-screens/model-02.png?v=lab-models-v1" alt="Модель 2 — груз" loading="lazy" /></a><div><h2>02 · Brainrot-куб</h2><p>Физический груз внутри прозрачного куба: его нужно донести до кнопки.</p></div></article>
+        <article><a href="./model-screens/model-11.png?v=lab-models-v1"><img src="./model-screens/model-11.png?v=lab-models-v1" alt="Модель 11 — портальная пушка" loading="lazy" /></a><div><h2>11 · Портальная пушка</h2><p>Инструмент для перемещения через портальные поверхности.</p></div></article>
+        <article><a href="./model-screens/model-12.png"><img src="./model-screens/model-12.png" alt="Модель 12 — рояль со стулом" loading="lazy" /></a><div><h2>12 · Рояль со стулом</h2><p>Комната наблюдения и зона отдыха лаборатории.</p></div></article>
+        <article><a href="./model-screens/model-13.png"><img src="./model-screens/model-13.png" alt="Модель 13 — офисное кресло" loading="lazy" /></a><div><h2>13 · Офисное кресло</h2><p>Рабочее место оператора.</p></div></article>
+        <article><a href="./model-screens/model-14.png"><img src="./model-screens/model-14.png" alt="Модель 14 — круглый стол" loading="lazy" /></a><div><h2>14 · Круглый стол</h2><p>Реквизит зоны отдыха.</p></div></article>
+        <article><a href="./model-screens/model-15.png"><img src="./model-screens/model-15.png" alt="Модель 15 — кружка" loading="lazy" /></a><div><h2>15 · Кружка</h2><p>Деталь стола в комнате наблюдения.</p></div></article>
+        <article><a href="./model-screens/model-16.png"><img src="./model-screens/model-16.png" alt="Модель 16 — портальная панель" loading="lazy" /></a><div><h2>16 · Портальная панель</h2><p>Белая поверхность испытательной камеры.</p></div></article>
+        <article><a href="./model-screens/model-17.png"><img src="./model-screens/model-17.png" alt="Модель 17 — дверь лаборатории" loading="lazy" /></a><div><h2>17 · Дверь лаборатории</h2><p>Проход между испытательными камерами.</p></div></article>
+        <article><a href="./model-screens/model-18.png"><img src="./model-screens/model-18.png" alt="Модель 18 — нажимная кнопка" loading="lazy" /></a><div><h2>18 · Нажимная кнопка</h2><p>Принимает груз и запускает механизм.</p></div></article>
+        <article><a href="./model-screens/model-19.png"><img src="./model-screens/model-19.png" alt="Модель 19 — подъёмная платформа" loading="lazy" /></a><div><h2>19 · Подъёмная платформа</h2><p>Механическая площадка испытательной камеры.</p></div></article>
+        <article><a href="./model-screens/model-20.png"><img src="./model-screens/model-20.png" alt="Модель 20 — энергетический барьер" loading="lazy" /></a><div><h2>20 · Энергетический барьер</h2><p>Разделяет зоны испытаний.</p></div></article>
+        <article><a href="./model-screens/model-21.png"><img src="./model-screens/model-21.png" alt="Модель 21 — импульсная площадка" loading="lazy" /></a><div><h2>21 · Импульсная площадка</h2><p>Площадка для разгона и переноса импульса.</p></div></article>
+        <article><a href="./model-screens/model-22.png"><img src="./model-screens/model-22.png" alt="Модель 22 — терминал" loading="lazy" /></a><div><h2>22 · Терминал</h2><p>Экран управления лабораторией.</p></div></article>
       </section>
     </main>
   </body>

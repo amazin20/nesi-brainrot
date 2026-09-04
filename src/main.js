@@ -1,233 +1,202 @@
 import './styles.css';
-import { Game } from './game/Game.js';
-import { RiftGame } from './game/RiftGame.js';
+import { LabGame } from './game/LabGame.js';
 import { formatTime } from './game/rules.js';
 
 const $ = (selector) => document.querySelector(selector);
-const query = new URLSearchParams(window.location.search);
+const query = new URLSearchParams(location.search);
 const smokeMode = query.get('smoke') === '1';
-const portalMode = ['rift', 'portal'].includes(query.get('mode') ?? 'rift');
+const debugMode = smokeMode || query.get('debug') === '1';
 const elements = {
-  game: $('#game'),
-  loading: $('#loading'),
-  loadingBar: $('#loading-bar'),
-  loadingLabel: $('#loading-label'),
-  loadingPercent: $('#loading-percent'),
-  start: $('#start-screen'),
-  play: $('#play-button'),
-  hud: $('#hud'),
-  objective: $('#objective'),
-  cargoStatus: $('#cargo-status'),
-  timer: $('#timer'),
-  bestTime: $('#best-time'),
-  progressValue: $('#progress-value'),
-  progressBar: $('#progress-bar'),
-  checkpoint: $('#checkpoint'),
-  toast: $('#toast'),
-  pause: $('#pause-screen'),
-  pauseButton: $('#pause-button'),
-  resumeButton: $('#resume-button'),
-  restartButton: $('#restart-button'),
-  win: $('#win-screen'),
-  resultTime: $('#result-time'),
-  recordMessage: $('#record-message'),
-  playAgainButton: $('#play-again-button'),
-  mobileControls: $('#mobile-controls'),
-  joystick: $('#joystick'),
-  joystickKnob: $('#joystick-knob'),
-  jumpButton: $('#jump-button'),
+  game: $('#game'), loading: $('#loading'), loadingBar: $('#loading-bar'),
+  loadingLabel: $('#loading-label'), loadingPercent: $('#loading-percent'),
+  start: $('#start-screen'), play: $('#play-button'), hud: $('#hud'),
+  objective: $('#objective'), cargo: $('#cargo-status'), timer: $('#timer'),
+  chamber: $('#chamber'), progress: $('#progress-bar'), portalStatus: $('#portal-status'),
+  toast: $('#toast'), pause: $('#pause-screen'), pauseButton: $('#pause-button'),
+  resume: $('#resume-button'), restart: $('#restart-button'), win: $('#win-screen'),
+  resultTime: $('#result-time'), playAgain: $('#play-again-button'),
+  mobile: $('#mobile-controls'), joystick: $('#joystick'), knob: $('#joystick-knob'),
+  jump: $('#jump-button'), error: $('#error-screen'), errorDetail: $('#error-detail'),
 };
-
-if (portalMode) {
-  document.body.classList.add('portal-mode');
-  document.title = 'Brainrot Rift Lab — игра от третьего лица';
-  document.querySelector('#loading .eyebrow').textContent = 'ЗАГРУЖАЕМ РЕЗОНАНСНУЮ ЛАБОРАТОРИЮ';
-  document.querySelector('#loading h1').innerHTML = 'RIFT<br /><em>LAB</em>';
-  document.querySelector('#start-screen .eyebrow').textContent = 'ОРИГИНАЛЬНАЯ ФАЗОВАЯ МЕХАНИКА · ТРЕТЬЕ ЛИЦО';
-  elements.start.querySelector('h1').innerHTML = 'RIFT<br /><em>LAB</em>';
-  elements.start.querySelector('.lead').textContent = 'Ставь один разлом-маяк и строй к нему управляемый фазовый маршрут сквозь стену. Перенеси Brainrot-куб, совмести резонанс и открой выход.';
-  elements.start.querySelector('.control-grid').innerHTML = `
-    <div><kbd>WASD</kbd><span>движение</span></div>
-    <div><kbd>МЫШЬ</kbd><span>обзор</span></div>
-    <div><kbd>ЛКМ</kbd><span>поставить маяк</span></div>
-    <div><kbd>ПКМ / Q</kbd><span>фазовый маршрут</span></div>
-    <div><kbd>E</kbd><span>взять куб</span></div>
-    <div><kbd>SPACE / R</kbd><span>прыжок / заново</span></div>`;
-  elements.play.innerHTML = 'ЗАПУСТИТЬ RIFT LAB <span>→</span>';
-  elements.start.querySelector('.mobile-note').textContent = 'На ПК кликни по игре, чтобы захватить курсор. Esc — отпустить курсор и поставить паузу.';
-  document.querySelector('#win-screen .eyebrow').textContent = 'РЕЗОНАНСНЫЙ МАРШРУТ ЗАВЕРШЕН';
-  document.querySelector('#win-screen h2').textContent = 'RIFT LAB ПРОЙДЕН!';
-  elements.playAgainButton.textContent = 'ПРОЙТИ ЕЩЁ РАЗ';
-}
+document.documentElement.dataset.runtimeState = 'loading';
+document.documentElement.dataset.gameReady = 'false';
+document.body.dataset.playState = 'loading';
 
 let toastTimer;
-function showScreen(element, visible) {
-  element.classList.toggle('screen--active', visible);
+function showScreen(screen, visible) {
+  screen.classList.toggle('screen--active', visible);
+  screen.setAttribute('aria-hidden', String(!visible));
+  screen.inert = !visible;
 }
-
 function showToast(message) {
-  window.clearTimeout(toastTimer);
+  clearTimeout(toastTimer);
   elements.toast.textContent = message;
   elements.toast.classList.add('toast--active');
-  toastTimer = window.setTimeout(() => elements.toast.classList.remove('toast--active'), 1900);
+  toastTimer = setTimeout(() => elements.toast.classList.remove('toast--active'), 3500);
 }
-
-function countSceneVertices(scene) {
-  let vertices = 0;
-  scene?.traverse?.((child) => {
-    vertices += child.geometry?.attributes?.position?.count ?? 0;
+function clearQueuedInputs() {
+  if (!game.input) return;
+  game.input.keys.clear();
+  game.input.jumpQueued = false;
+  game.input.restartQueued = false;
+  game.input.pauseQueued = false;
+  game.input.mobileMove.set(0, 0);
+  game.interactQueued = false;
+  elements.knob.style.transform = 'translate(0, 0)';
+}
+function setPlayState(state) {
+  document.body.dataset.playState = state;
+  document.documentElement.dataset.runtimeState = state;
+  const active = state === 'playing';
+  const showHud = active || state === 'paused';
+  elements.hud.classList.toggle('hud--active', showHud);
+  elements.hud.setAttribute('aria-hidden', String(!showHud));
+  elements.hud.inert = !showHud;
+  elements.mobile.classList.toggle('mobile-controls--active', active);
+  elements.mobile.setAttribute('aria-hidden', String(!active));
+  elements.mobile.inert = !active;
+}
+function publishDiagnostics() {
+  const report = game.diagnostics();
+  const missing = Array.isArray(report.missingModels) ? report.missingModels.length : Number(report.missingModels ?? 0);
+  const ready = report.modelsLoaded > 0 && missing === 0 && report.thirdPerson;
+  Object.assign(document.documentElement.dataset, {
+    gameReady: String(ready), runtimeState: report.state,
+    modelsLoaded: String(report.modelsLoaded), modelFallbacks: String(missing),
+    levelSmoke: ready ? 'pass' : 'fail', isCarrying: String(Boolean(game.heldCube)),
+    checkpointIndex: String(report.stage),
   });
-  return vertices;
-}
-
-function publishDemoDiagnostics(game, referenceMode = false) {
-  const assetVertices = [...game.assets.values()].map(countSceneVertices);
-  const suspiciousFallbacks = referenceMode
-    ? 0
-    : assetVertices.filter((vertices) => vertices < 400).length;
-  const activePlayerPosition = portalMode ? game.playerPosition : game.player?.position;
-  const playerPosition = activePlayerPosition
-    ? { x: activePlayerPosition.x, y: activePlayerPosition.y, z: activePlayerPosition.z }
-    : null;
-  const report = {
-    referenceMode,
-    portalMode,
-    state: game.state,
-    modelsLoaded: game.assets.size,
-    assetVertices,
-    suspiciousFallbacks,
-    surfaces: game.surfaces?.length ?? game.riftSurfaces?.length ?? 0,
-    hazards: game.hazards?.length ?? game.motions?.length ?? 0,
-    bouncers: game.bouncers?.length ?? 0,
-    checkpoints: game.checkpoints?.length ?? (game.buttonRoot ? 2 : 0),
-    checkpointIndex: game.checkpointIndex ?? null,
-    playerPosition,
-    isCarrying: Boolean(portalMode ? game.heldCube : game.player?.hasCargo),
-    hasLevel: Boolean(portalMode ? game.world : game.level),
-    hasPlayer: Boolean(portalMode ? game.playerPosition : game.player),
-    hasCargoObject: Boolean(portalMode ? game.cube : game.cargo),
-    hasFinish: Boolean(portalMode ? game.door : game.finishGate),
-    thirdPerson: Boolean(portalMode ? game.thirdPerson : true),
-    mechanic: portalMode ? 'single-anchor-rift-route' : 'runner',
+  if (debugMode) window.__NESI_DEMO_DIAGNOSTICS__ = {
+    ...report, suspiciousFallbacks: missing,
     winScreenVisible: elements.win.classList.contains('screen--active'),
   };
-
-  const playable = referenceMode || (portalMode
-    ? report.modelsLoaded === 11
-      && report.suspiciousFallbacks === 0
-      && game.riftBeacon?.placed
-      && game.thirdPerson === true
-      && game.riftSurfaces?.length >= 8
-      && report.hasLevel
-      && report.hasPlayer
-      && report.hasCargoObject
-      && report.hasFinish
-    : report.modelsLoaded === 10
-      && report.suspiciousFallbacks === 0
-      && report.surfaces >= 11
-      && report.hazards >= 6
-      && report.bouncers >= 4
-      && report.checkpoints === 3
-      && report.hasLevel
-      && report.hasPlayer
-      && report.hasCargoObject
-      && report.hasFinish);
-
-  document.documentElement.dataset.gameReady = 'true';
-  document.documentElement.dataset.levelSmoke = playable ? 'pass' : 'fail';
-  document.documentElement.dataset.runtimeState = report.state;
-  document.documentElement.dataset.modelsLoaded = String(report.modelsLoaded);
-  document.documentElement.dataset.modelFallbacks = String(report.suspiciousFallbacks);
-  document.documentElement.dataset.isCarrying = String(report.isCarrying);
-  document.documentElement.dataset.checkpointIndex = String(report.checkpointIndex ?? '');
-  window.__NESI_DEMO_DIAGNOSTICS__ = report;
   return report;
 }
-
-const GameMode = portalMode ? RiftGame : Game;
-const game = new GameMode({
-  container: elements.game,
-  touch: {
-    joystick: elements.joystick,
-    joystickKnob: elements.joystickKnob,
-    jumpButton: elements.jumpButton,
-  },
-  onProgress: ({ completed, total, label }) => {
-    const percent = Math.round((completed / total) * 100);
-    elements.loadingBar.style.width = `${percent}%`;
-    elements.loadingPercent.textContent = `${percent}%`;
-    elements.loadingLabel.textContent = label;
-  },
-  onReady: ({ referenceMode = false } = {}) => {
-    showScreen(elements.loading, false);
-    showScreen(elements.start, !referenceMode);
-    if (referenceMode) {
-      elements.hud.classList.remove('hud--active');
-      elements.mobileControls.classList.remove('mobile-controls--active');
-    }
-    publishDemoDiagnostics(game, referenceMode);
-    if (smokeMode && !referenceMode) {
-      window.__NESI_DEMO_GAME__ = game;
-      window.setTimeout(() => {
-        enterGame();
-        publishDemoDiagnostics(game, false);
-        window.__NESI_DEMO_DIAGNOSTIC_TIMER__ = window.setInterval(
-          () => publishDemoDiagnostics(game, false),
-          100,
-        );
-      }, 80);
-    }
-  },
-  onHud: ({ elapsed, best, progress, objective, hasCargo, checkpoint }) => {
-    elements.timer.textContent = formatTime(elapsed);
-    elements.bestTime.textContent = portalMode ? 'ТЕСТОВАЯ КАМЕРА 01' : Number.isFinite(best) ? `РЕКОРД ${formatTime(best)}` : 'РЕКОРД —';
-    elements.objective.textContent = objective;
-    elements.cargoStatus.textContent = portalMode
-      ? (hasCargo ? 'КУБ В РУКАХ' : 'КУБ НЕ В РУКАХ')
-      : (hasCargo ? 'БРЕЙНРОТ У ТЕБЯ' : 'ГРУЗ НЕ ПОДОБРАН');
-    elements.cargoStatus.classList.toggle('cargo-status--ok', hasCargo);
-    const percent = Math.round(progress * 100);
-    elements.progressValue.textContent = String(percent);
-    elements.progressBar.style.width = `${percent}%`;
-    elements.checkpoint.textContent = portalMode ? `ЭТАП ${checkpoint}/2` : `ЧЕКПОИНТ ${checkpoint}/2`;
-  },
-  onToast: showToast,
-  onPause: (paused) => showScreen(elements.pause, paused),
-  onWin: ({ elapsed, newRecord }) => {
-    elements.resultTime.textContent = formatTime(elapsed);
-    elements.recordMessage.textContent = portalMode
-      ? 'Фазовый маршрут стабилен, Brainrot-куб доставлен'
-      : newRecord ? 'НОВЫЙ РЕКОРД!' : 'Брейнрот доставлен в целости';
-    showScreen(elements.win, true);
-    elements.mobileControls.classList.remove('mobile-controls--active');
-  },
-});
-
-function enterGame() {
-  showScreen(elements.start, false);
-  showScreen(elements.pause, false);
-  showScreen(elements.win, false);
-  elements.hud.classList.add('hud--active');
-  elements.hud.setAttribute('aria-hidden', 'false');
-  elements.mobileControls.classList.add('mobile-controls--active');
-  game.start();
-}
-
-elements.play.addEventListener('click', enterGame);
-elements.playAgainButton.addEventListener('click', enterGame);
-elements.pauseButton.addEventListener('click', () => game.togglePause());
-elements.resumeButton.addEventListener('click', () => game.togglePause(false));
-elements.restartButton.addEventListener('click', () => {
-  showScreen(elements.pause, false);
-  game.restart();
-});
-
-game.init().catch((error) => {
+function showRuntimeError(error) {
+  if (document.body.dataset.playState === 'error') return;
   console.error(error);
+  clearInterval(window.__NESI_DEMO_DIAGNOSTIC_TIMER__);
+  game.renderer?.setAnimationLoop(null);
   document.documentElement.dataset.gameReady = 'false';
   document.documentElement.dataset.levelSmoke = 'fail';
-  document.documentElement.dataset.runtimeState = 'error';
-  window.__NESI_DEMO_ERROR__ = String(error?.stack || error);
-  elements.loadingLabel.textContent = 'Для 3D-игры нужен включённый WebGL. Включи аппаратное ускорение и открой страницу снова.';
-  elements.loadingPercent.textContent = '!';
+  setPlayState('error');
+  for (const screen of [elements.loading, elements.start, elements.pause, elements.win]) showScreen(screen, false);
+  elements.errorDetail.textContent = error?.message || String(error);
+  showScreen(elements.error, true);
+  if (debugMode) window.__NESI_DEMO_ERROR__ = String(error?.stack || error);
+}
+const game = new LabGame({
+  container: elements.game,
+  touch: { joystick: elements.joystick, joystickKnob: elements.knob, jumpButton: elements.jump },
+  onProgress: ({ completed, total, label }) => {
+    const percent = total > 0 ? Math.round(completed / total * 100) : 0;
+    elements.loadingBar.style.width = percent + '%';
+    elements.loadingPercent.textContent = percent + '%';
+    elements.loadingLabel.textContent = label;
+    $('#loading-progress').setAttribute('aria-valuenow', String(percent));
+  },
+  onReady: () => {
+    showScreen(elements.loading, false);
+    setPlayState('ready');
+    showScreen(elements.start, !smokeMode);
+    publishDiagnostics();
+    if (debugMode) {
+      window.__NESI_DEMO_GAME__ = game;
+      window.__NESI_DEMO_DIAGNOSTIC_TIMER__ = setInterval(publishDiagnostics, 200);
+    }
+    if (smokeMode) setTimeout(enterGame, 60);
+    else elements.play.focus({ preventScroll: true });
+  },
+  onHud: ({ elapsed, chamber, objective, hasCargo, progress, portalsReady, stage }) => {
+    elements.timer.textContent = formatTime(elapsed).slice(0, 5);
+    elements.chamber.textContent = chamber;
+    elements.objective.textContent = objective;
+    elements.cargo.textContent = hasCargo ? 'Куб у тебя' : 'Найди куб';
+    elements.cargo.classList.toggle('status--active', hasCargo);
+    elements.portalStatus.textContent = portalsReady ? 'Переход связан' : 'Создай пару переходов';
+    elements.portalStatus.classList.toggle('status--active', portalsReady);
+    elements.progress.style.width = Math.round(Math.max(0, Math.min(1, progress)) * 100) + '%';
+    document.querySelectorAll('.chamber-step').forEach((step, index) => {
+      step.classList.toggle('chamber-step--current', index === stage);
+      step.classList.toggle('chamber-step--complete', index < stage);
+      step.setAttribute('aria-current', index === stage ? 'step' : 'false');
+    });
+    document.documentElement.dataset.runtimeState = game.state;
+  },
+  onToast: showToast,
+  onPause: (paused) => {
+    clearQueuedInputs();
+    showScreen(elements.pause, paused);
+    setPlayState(paused ? 'paused' : 'playing');
+    if (paused) elements.resume.focus({ preventScroll: true });
+    else document.activeElement?.blur?.();
+  },
+  onWin: ({ elapsed }) => {
+    setPlayState('won');
+    elements.resultTime.textContent = formatTime(elapsed);
+    showScreen(elements.win, true);
+    elements.playAgain.focus({ preventScroll: true });
+    publishDiagnostics();
+  },
 });
+function enterGame() {
+  for (const screen of [elements.start, elements.pause, elements.win]) showScreen(screen, false);
+  setPlayState('playing');
+  document.activeElement?.blur?.();
+  clearQueuedInputs();
+  try { game.start(); } catch (error) { showRuntimeError(error); return; }
+  publishDiagnostics();
+}
+function resumeGame() {
+  clearQueuedInputs();
+  game.togglePause(false);
+}
+function restartGame() {
+  clearQueuedInputs();
+  game.restart();
+  // Restart itself resets the simulation; the explicit resume also requests
+  // pointer capture from this click/key gesture when restarting from a menu.
+  game.togglePause(false);
+}
+for (const screen of document.querySelectorAll('.screen:not(.screen--active)')) showScreen(screen, false);
+elements.play.addEventListener('click', enterGame);
+elements.playAgain.addEventListener('click', enterGame);
+elements.pauseButton.addEventListener('click', () => game.togglePause(true));
+elements.resume.addEventListener('click', resumeGame);
+elements.restart.addEventListener('click', restartGame);
+addEventListener('keydown', (event) => {
+  if (game.state === 'paused' && ['KeyR', 'Escape'].includes(event.code)) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.repeat) return;
+    if (event.code === 'KeyR') restartGame();
+    else resumeGame();
+  } else if (game.state !== 'playing' && ['KeyR', 'Escape', 'Space'].includes(event.code)) {
+    // Menu keystrokes must not become a jump/restart on the first game frame.
+    // Keep the default Space action so focused buttons remain accessible.
+    event.stopImmediatePropagation();
+  }
+}, true);
+let hadPointerLock = false;
+document.addEventListener('pointerlockchange', () => {
+  const locked = document.pointerLockElement === game.renderer?.domElement;
+  const lost = hadPointerLock && !locked;
+  hadPointerLock = locked;
+  if (lost && game.state === 'playing') {
+    // Browsers may reserve Escape for releasing the mouse without forwarding
+    // keydown. Clear any forwarded Escape too, avoiding a second toggle.
+    clearQueuedInputs();
+    game.togglePause(true);
+  }
+});
+$('#reload-button').addEventListener('click', () => location.reload());
+addEventListener('error', (event) => { if (event.error) showRuntimeError(event.error); });
+addEventListener('unhandledrejection', (event) => {
+  // A denied pointer capture does not invalidate the loaded game.
+  if (/pointer.?lock|user gesture|document is not focused/i.test(String(event.reason?.message ?? event.reason))) {
+    event.preventDefault();
+    return;
+  }
+  showRuntimeError(event.reason);
+});
+game.init().catch(showRuntimeError);
