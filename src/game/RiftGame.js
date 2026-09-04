@@ -40,6 +40,9 @@ const COLORS = {
 const noop = () => {};
 const PLAYER_RADIUS = 0.48;
 const PLAYER_EYE = 1.42;
+const PLAYER_HEIGHT = 2.5;
+const CUBE_RADIUS = 0.78;
+const WALL_HALF_THICKNESS = 0.17;
 const ROOM = Object.freeze({ minX: -11.72, maxX: 11.72, minZ: -19.72, maxZ: 21.72 });
 
 export class RiftGame {
@@ -436,7 +439,7 @@ export class RiftGame {
 
   createRiftSystem() {
     this.riftBeacon = this.makeRiftBeacon();
-    this.setRiftBeacon(new THREE.Vector3(0, 1.34, 7.79), new THREE.Vector3(0, 0, 1), false);
+    this.setRiftBeacon(new THREE.Vector3(0, 1.34, 8.21), new THREE.Vector3(0, 0, 1), false);
   }
 
   makeRiftBeacon() {
@@ -695,7 +698,7 @@ export class RiftGame {
     this.cube.position.set(-4.8, 0.79, 1.8);
     this.cube.rotation.set(0, 0.35, 0);
     this.cubeVelocity.set(0, 0, 0);
-    this.setRiftBeacon(new THREE.Vector3(0, 1.34, 7.79), new THREE.Vector3(0, 0, 1), false);
+    this.setRiftBeacon(new THREE.Vector3(0, 1.34, 8.21), new THREE.Vector3(0, 0, 1), false);
     if (this.riftTrail) this.riftTrail.visible = false;
     if (this.phaseHalo) this.phaseHalo.visible = false;
     this.playerGroup.position.copy(this.playerPosition);
@@ -835,25 +838,53 @@ export class RiftGame {
     );
     this.blockPlayerPlane(previous, 8);
     this.blockPlayerPlane(previous, -3.6);
-    if (!this.buttonActivated) this.blockPlayerPlane(previous, -14);
+    if (!this.exitPassageClear(this.playerPosition, PLAYER_RADIUS, this.playerPosition.y, PLAYER_HEIGHT)) {
+      this.blockPlayerPlane(previous, -14);
+    }
     if (!this.buttonActivated && this.playerPosition.z < -17.8) this.playerPosition.z = -17.8;
   }
 
   blockPlayerPlane(previous, z) {
-    if (previous.z >= z + PLAYER_RADIUS && this.playerPosition.z < z + PLAYER_RADIUS) {
-      this.playerPosition.z = z + PLAYER_RADIUS;
+    const clearance = PLAYER_RADIUS + WALL_HALF_THICKNESS;
+    if (previous.z >= z && this.playerPosition.z < z + clearance) {
+      this.playerPosition.z = z + clearance;
       this.playerVelocity.z = Math.max(0, this.playerVelocity.z);
-    } else if (previous.z <= z - PLAYER_RADIUS && this.playerPosition.z > z - PLAYER_RADIUS) {
-      this.playerPosition.z = z - PLAYER_RADIUS;
+    } else if (previous.z <= z && this.playerPosition.z > z - clearance) {
+      this.playerPosition.z = z - clearance;
       this.playerVelocity.z = Math.min(0, this.playerVelocity.z);
     }
+  }
+
+  exitPassageClear(position, radius, bottom = position.y - radius, height = radius * 2) {
+    // The raised panel only opens the central doorway, never the side walls.
+    const openingHeight = Math.min(5.6, this.doorProgress * 5.2);
+    return this.buttonActivated && Math.abs(position.x) + radius <= 2.85
+      && bottom + height <= openingHeight - 0.05;
+  }
+
+  constrainHeldCube(position) {
+    position.x = THREE.MathUtils.clamp(position.x, ROOM.minX + CUBE_RADIUS, ROOM.maxX - CUBE_RADIUS);
+    position.z = THREE.MathUtils.clamp(position.z, ROOM.minZ + CUBE_RADIUS, ROOM.maxZ - CUBE_RADIUS);
+    const planes = [8, -3.6];
+    if (!this.exitPassageClear(position, CUBE_RADIUS)) planes.push(-14);
+    for (const z of planes) {
+      // Use the player's chamber, not the lagging cube's previous side. This
+      // also resolves the final travel frame after riftTravel becomes null.
+      const clearance = CUBE_RADIUS + WALL_HALF_THICKNESS;
+      position.z = this.playerPosition.z >= z
+        ? Math.max(position.z, z + clearance)
+        : Math.min(position.z, z - clearance);
+    }
+    return position;
   }
 
   updateCube(dt) {
     if (this.heldCube) {
       const forward = forwardFromYawPitch(this.yaw, 0);
       const target = this.playerPosition.clone().add(new THREE.Vector3(0, 1.03, 0)).addScaledVector(forward, 1.35);
+      if (!this.riftTravel) this.constrainHeldCube(target);
       this.cube.position.lerp(target, 1 - Math.exp(-dt * (this.riftTravel ? 28 : 16)));
+      if (!this.riftTravel) this.constrainHeldCube(this.cube.position);
       this.cubeVelocity.copy(this.playerVelocity);
       return;
     }
@@ -871,17 +902,17 @@ export class RiftGame {
     this.cube.position.z = THREE.MathUtils.clamp(this.cube.position.z, ROOM.minZ + 0.8, ROOM.maxZ - 0.8);
     this.blockCubePlane(previous, 8);
     this.blockCubePlane(previous, -3.6);
-    if (!this.buttonActivated) this.blockCubePlane(previous, -14);
+    if (!this.exitPassageClear(this.cube.position, CUBE_RADIUS)) this.blockCubePlane(previous, -14);
     this.cube.rotation.x += this.cubeVelocity.z * dt * 0.25;
     this.cube.rotation.z -= this.cubeVelocity.x * dt * 0.25;
   }
 
   blockCubePlane(previous, z) {
-    const radius = 0.78;
-    if (previous.z >= z + radius && this.cube.position.z < z + radius) {
+    const radius = CUBE_RADIUS + WALL_HALF_THICKNESS;
+    if (previous.z >= z && this.cube.position.z < z + radius) {
       this.cube.position.z = z + radius;
       this.cubeVelocity.z = Math.max(0, this.cubeVelocity.z) * 0.18;
-    } else if (previous.z <= z - radius && this.cube.position.z > z - radius) {
+    } else if (previous.z <= z && this.cube.position.z > z - radius) {
       this.cube.position.z = z - radius;
       this.cubeVelocity.z = Math.min(0, this.cubeVelocity.z) * 0.18;
     }
@@ -898,6 +929,10 @@ export class RiftGame {
     }
     const playerCenter = this.playerPosition.clone().add(new THREE.Vector3(0, 1, 0));
     if (playerCenter.distanceTo(this.cube.position) <= 3) {
+      if (!this.cubeVisibleFrom(playerCenter)) {
+        this.callbacks.onToast('КУБ ЗА СТЕНОЙ — СНАЧАЛА ПРОЙДИ К НЕМУ');
+        return;
+      }
       this.heldCube = true;
       this.cubeVelocity.set(0, 0, 0);
       this.audio.pickup();
@@ -905,6 +940,16 @@ export class RiftGame {
     } else {
       this.callbacks.onToast('ПОДОЙДИ БЛИЖЕ К КУБУ');
     }
+  }
+
+  cubeVisibleFrom(origin) {
+    const direction = this.cube.position.clone().sub(origin);
+    const distance = direction.length();
+    if (distance < 0.001) return true;
+    // A separate ray keeps aiming's distance unlimited after interactions.
+    const ray = new THREE.Raycaster(origin, direction.normalize(), 0, distance - 0.001);
+    for (const object of this.aimBlockers) object.updateWorldMatrix(true, false);
+    return ray.intersectObjects(this.aimBlockers, false).length === 0;
   }
 
   updatePuzzle(dt) {
@@ -930,19 +975,28 @@ export class RiftGame {
     const look = this.playerPosition.clone().add(new THREE.Vector3(0, PLAYER_EYE, 0));
     const forward = forwardFromYawPitch(this.yaw, this.pitch);
     const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
-    let desired = look.clone().addScaledVector(forward, -6.2).addScaledVector(right, 0.72);
-    const toCamera = desired.clone().sub(look);
-    const distance = toCamera.length();
-    if (distance > 0.001) {
-      this.cameraRaycaster.set(look, toCamera.clone().normalize());
+    const desired = look.clone().addScaledVector(forward, -6.2).addScaledVector(right, 0.72);
+    for (const object of this.cameraBlockers) object.updateWorldMatrix(true, false);
+    const keepVisible = (position) => {
+      const offset = position.clone().sub(look);
+      const distance = offset.length();
+      if (distance <= 0.001) return false;
+      this.cameraRaycaster.set(look, offset.normalize());
       this.cameraRaycaster.far = distance;
       const [hit] = this.cameraRaycaster.intersectObjects(this.cameraBlockers, false);
-      if (hit && hit.distance < distance) {
-        desired = look.clone().addScaledVector(toCamera.normalize(), Math.max(1.25, hit.distance - 0.28));
-      }
+      if (!hit || hit.distance >= distance) return false;
+      position.copy(look).addScaledVector(offset, Math.max(0, hit.distance - 0.28));
+      return true;
+    };
+    const obstructed = keepVisible(desired);
+    // Retract immediately; only the return to a longer boom is smoothed.
+    if (snap || (obstructed && desired.distanceTo(look) < this.camera.position.distanceTo(look))) {
+      this.camera.position.copy(desired);
+    } else {
+      this.camera.position.lerp(desired, 1 - Math.exp(-dt * (this.riftTravel ? 8.5 : 6.2)));
     }
-    if (snap) this.camera.position.copy(desired);
-    else this.camera.position.lerp(desired, 1 - Math.exp(-dt * (this.riftTravel ? 8.5 : 6.2)));
+    // The interpolated position can follow a different ray around a corner.
+    keepVisible(this.camera.position);
     const aimPoint = look.clone().addScaledVector(forward, 18);
     this.camera.lookAt(aimPoint);
     this.camera.getWorldDirection(this.cameraForward);

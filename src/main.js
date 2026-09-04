@@ -6,7 +6,7 @@ import { formatTime } from './game/rules.js';
 const $ = (selector) => document.querySelector(selector);
 const query = new URLSearchParams(window.location.search);
 const smokeMode = query.get('smoke') === '1';
-const portalMode = ['rift', 'portal'].includes(query.get('mode'));
+const portalMode = ['rift', 'portal'].includes(query.get('mode') ?? 'rift');
 const elements = {
   game: $('#game'),
   loading: $('#loading'),

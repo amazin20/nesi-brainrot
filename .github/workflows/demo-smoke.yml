@@ -99,7 +99,7 @@ jobs:
 
           try {
             page = await browser.newPage();
-            await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+            await page.setViewport({ width: 960, height: 600, deviceScaleFactor: 1 });
             page.on('console', (message) => {
               const text = `[console:${message.type()}] ${message.text()}`;
               browserMessages.push(text);
@@ -116,7 +116,7 @@ jobs:
               console.error(text);
             });
 
-            await page.goto('http://127.0.0.1:4173/nesi-brainrot/?mode=rift&smoke=1', {
+            await page.goto('http://127.0.0.1:4173/nesi-brainrot/?smoke=1', {
               waitUntil: 'domcontentloaded',
               timeout: 30000,
             });
@@ -131,6 +131,9 @@ jobs:
             if (riftData.levelSmoke !== 'pass') throw new Error('rift levelSmoke=' + riftData.levelSmoke);
             if (riftData.modelsLoaded !== '11') throw new Error('rift modelsLoaded=' + riftData.modelsLoaded);
             if (riftData.modelFallbacks !== '0') throw new Error('rift modelFallbacks=' + riftData.modelFallbacks);
+
+            // Advance gameplay with a fixed timestep, independently of software-GPU speed.
+            await page.evaluate(() => window.__NESI_DEMO_GAME__.renderer.setAnimationLoop(null));
 
             report.riftView = await page.evaluate(() => {
               const rift = window.__NESI_DEMO_GAME__;
@@ -153,18 +156,35 @@ jobs:
               throw new Error('unexpected rift mechanic: ' + report.riftView.mechanic);
             }
 
-            await page.evaluate(() => {
+            report.riftMovement = await page.evaluate(() => {
+              const rift = window.__NESI_DEMO_GAME__;
+              const startZ = rift.playerPosition.z;
+              window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w', bubbles: true }));
+              for (let i = 0; i < 45; i++) rift.updatePlaying(1 / 60);
+              window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW', key: 'w', bubbles: true }));
+              const moved = startZ - rift.playerPosition.z;
+              window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true }));
+              rift.updatePlaying(1 / 60);
+              window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ', bubbles: true }));
+              const jumped = rift.playerPosition.y > 0.05;
+              rift.resetRun(true);
+              return { moved, jumped };
+            });
+            if (report.riftMovement.moved < 1.5 || !report.riftMovement.jumped) {
+              throw new Error('rift movement/jump failed: ' + JSON.stringify(report.riftMovement));
+            }
+
+            report.riftFirstRoute = await page.evaluate(() => {
               const rift = window.__NESI_DEMO_GAME__;
               rift.riftCooldown = 0;
               rift.activateRiftRoute();
+              const started = Boolean(rift.riftTravel);
+              for (let i = 0; i < 90; i++) rift.updatePlaying(1 / 60);
+              return { started, routeActive: Boolean(rift.riftTravel), playerZ: rift.playerPosition.z };
             });
-            await page.waitForFunction(() => Boolean(window.__NESI_DEMO_GAME__?.riftTravel), { timeout: 3000 });
-            await new Promise((resolve) => setTimeout(resolve, 260));
-            await page.screenshot({ path: 'smoke-artifacts/rift-third-person.png', type: 'png' });
-            await page.waitForFunction(() => {
-              const rift = window.__NESI_DEMO_GAME__;
-              return Boolean(rift) && !rift.riftTravel && rift.playerPosition.z < 7.6;
-            }, { timeout: 5000, polling: 50 });
+            if (!report.riftFirstRoute.started || report.riftFirstRoute.routeActive || report.riftFirstRoute.playerZ >= 7.6) {
+              throw new Error('first route failed: ' + JSON.stringify(report.riftFirstRoute));
+            }
 
             report.riftCarryRoute = await page.evaluate(() => {
               const rift = window.__NESI_DEMO_GAME__;
@@ -182,12 +202,9 @@ jobs:
             if (!report.riftCarryRoute.heldAtStart || !report.riftCarryRoute.routeStarted) {
               throw new Error('rift carry route did not start');
             }
-            await page.waitForFunction(() => {
-              const rift = window.__NESI_DEMO_GAME__;
-              return Boolean(rift) && !rift.riftTravel && rift.playerPosition.z < -4.1;
-            }, { timeout: 5000, polling: 50 });
             report.riftFinish = await page.evaluate(() => {
               const rift = window.__NESI_DEMO_GAME__;
+              for (let i = 0; i < 90; i++) rift.updatePlaying(1 / 60);
               return {
                 playerZ: rift.playerPosition.z,
                 cubeZ: rift.cube.position.z,
@@ -195,9 +212,37 @@ jobs:
                 routeActive: Boolean(rift.riftTravel),
               };
             });
-            if (!report.riftFinish.held || report.riftFinish.cubeZ >= -3.6 || report.riftFinish.routeActive) {
+            if (!report.riftFinish.held || report.riftFinish.playerZ >= -4.1 || report.riftFinish.cubeZ >= -3.6 || report.riftFinish.routeActive) {
               throw new Error('rift carry traversal failed: ' + JSON.stringify(report.riftFinish));
             }
+
+            report.riftPuzzle = await page.evaluate(() => {
+              const rift = window.__NESI_DEMO_GAME__;
+              rift.toggleCube();
+              rift.cube.position.copy(rift.buttonRoot.position).setY(0.79);
+              rift.cubeVelocity.set(0, 0, 0);
+              for (let i = 0; i < 120; i++) rift.updatePlaying(1 / 60);
+              const buttonActivated = rift.buttonActivated;
+              const doorProgress = rift.doorProgress;
+              rift.playerPosition.set(0, 0, -18.2);
+              rift.updatePlaying(1 / 60);
+              return { buttonActivated, doorProgress, state: rift.state };
+            });
+            if (!report.riftPuzzle.buttonActivated || report.riftPuzzle.doorProgress < 0.95 || report.riftPuzzle.state !== 'won') {
+              throw new Error('rift puzzle failed: ' + JSON.stringify(report.riftPuzzle));
+            }
+
+            // Capture the canvas synchronously after one render, avoiding compositor
+            // screenshot deadlocks while preserving the actual game scene and materials.
+            const scenePng = await page.evaluate(() => {
+              const rift = window.__NESI_DEMO_GAME__;
+              rift.resetRun(true);
+              rift.activateRiftRoute();
+              for (let i = 0; i < 24; i++) rift.updatePlaying(1 / 60);
+              rift.renderer.render(rift.scene, rift.camera);
+              return rift.renderer.domElement.toDataURL('image/png').split(',')[1];
+            });
+            fs.writeFileSync('smoke-artifacts/rift-third-person.png', Buffer.from(scenePng, 'base64'));
 
             console.log(JSON.stringify(report, null, 2));
           } catch (error) {
