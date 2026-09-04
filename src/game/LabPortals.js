@@ -4,6 +4,7 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const HALF_TURN = new THREE.Quaternion().setFromAxisAngle(WORLD_UP, Math.PI);
 export const PORTAL_HALF_WIDTH = 1.18;
 export const PORTAL_HALF_HEIGHT = 1.58;
+const PORTAL_CLIP_OFFSET = 0.025;
 
 /** The normal always points out of the supporting wall and into the room. */
 export function makePortalFrame(position, normal) {
@@ -63,7 +64,7 @@ export function applyPortalObliqueClipping(camera, exit) {
   camera.updateMatrixWorld(true);
   const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
     exit.normal,
-    exit.position.clone().addScaledVector(exit.normal, 0.025),
+    exit.position.clone().addScaledVector(exit.normal, PORTAL_CLIP_OFFSET),
   ).applyMatrix4(camera.matrixWorldInverse);
   const clip = new THREE.Vector4(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
   const projection = camera.projectionMatrix.elements;
@@ -74,13 +75,67 @@ export function applyPortalObliqueClipping(camera, exit) {
     (1 + projection[10]) / projection[14],
   );
   const denominator = clip.dot(q);
-  if (Math.abs(denominator) < 1e-6) return;
+  if (Math.abs(denominator) < 1e-6) return false;
   clip.multiplyScalar(2 / denominator);
   projection[2] = clip.x;
   projection[6] = clip.y;
   projection[10] = clip.z + 1;
   projection[14] = clip.w;
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+  return true;
+}
+
+/** Full viewport resolution keeps a small portal as sharp as the surrounding
+ * image; a scissor rectangle, rather than downsampling it, bounds fill cost. */
+export function portalTargetSize(width, height, maxResolution = 1280) {
+  const w = Math.max(1, Math.round(width));
+  const h = Math.max(1, Math.round(height));
+  const scale = Math.min(1, Math.max(128, maxResolution) / Math.max(w, h));
+  return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) };
+}
+
+/** Conservative screen-space bounds, including portals intersecting the eye's
+ * near plane. A bounding rectangle encloses the entire elliptical aperture. */
+export function portalViewportRect(frame, camera, width, height) {
+  camera.updateMatrixWorld(true);
+  const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+  if (eye.sub(frame.position).dot(frame.normal) <= 0.002) return null;
+  const viewProjection = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  const frustum = new THREE.Frustum().setFromProjectionMatrix(viewProjection);
+  if (!frustum.intersectsSphere(new THREE.Sphere(frame.position, Math.hypot(frame.width, frame.height) * 1.14))) return null;
+  let minX = 1; let minY = 1; let maxX = -1; let maxY = -1;
+  for (const x of [-1, 1]) {
+    for (const y of [-1, 1]) {
+      const point = new THREE.Vector3(x * frame.width * 1.14, y * frame.height * 1.14, 0)
+        .applyQuaternion(frame.quaternion).add(frame.position);
+      const clip = new THREE.Vector4(point.x, point.y, point.z, 1).applyMatrix4(viewProjection);
+      if (clip.w <= 0.0001) return { x: 0, y: 0, width, height };
+      minX = Math.min(minX, clip.x / clip.w); maxX = Math.max(maxX, clip.x / clip.w);
+      minY = Math.min(minY, clip.y / clip.w); maxY = Math.max(maxY, clip.y / clip.w);
+    }
+  }
+  const x = Math.max(0, Math.floor((minX * 0.5 + 0.5) * width) - 3);
+  const y = Math.max(0, Math.floor((minY * 0.5 + 0.5) * height) - 3);
+  const right = Math.min(width, Math.ceil((maxX * 0.5 + 0.5) * width) + 3);
+  const top = Math.min(height, Math.ceil((maxY * 0.5 + 0.5) * height) + 3);
+  return right > x && top > y ? { x, y, width: right - x, height: top - y } : null;
+}
+
+function targetOptions(renderer, sampleCount) {
+  const hdr = !!(renderer?.extensions?.has('EXT_color_buffer_float') || renderer?.extensions?.has('EXT_color_buffer_half_float'));
+  let samples = Math.min(sampleCount, renderer?.capabilities?.maxSamples || 0);
+  const gl = renderer?.getContext?.();
+  if (samples && gl?.getInternalformatParameter) {
+    // Float attachments do not necessarily support the context's MAX_SAMPLES.
+    const supported = gl.getInternalformatParameter(gl.RENDERBUFFER, hdr ? gl.RGBA16F : gl.RGBA8, gl.SAMPLES);
+    samples = Math.max(0, ...Array.from(supported || []).filter((value) => value <= samples));
+  }
+  return {
+    type: hdr ? THREE.HalfFloatType : THREE.UnsignedByteType,
+    colorSpace: THREE.LinearSRGBColorSpace,
+    samples, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    generateMipmaps: false, depthBuffer: true, stencilBuffer: false,
+  };
 }
 
 function portalSurface(color, texture) {
@@ -105,36 +160,40 @@ function portalSurface(color, texture) {
       void main() {
         vec2 screenUv = screenPosition.xy / screenPosition.w * 0.5 + 0.5;
         float radial = length((apertureUv - 0.5) * 2.0);
-        float wave = 0.035 * sin(radial * 34.0 - time * 3.0);
-        vec3 dormant = tint * (0.15 + wave) + vec3(0.012, 0.018, 0.028);
+        float edge = smoothstep(0.92, 1.0, radial);
+        vec3 dormant = tint * (0.10 + 0.05 * radial) + vec3(0.012, 0.018, 0.028);
         vec3 destination = texture2D(view, clamp(screenUv, vec2(0.001), vec2(0.999))).rgb;
         vec3 result = mix(dormant, destination, linked);
-        result += tint * pow(clamp(radial, 0.0, 1.0), 18.0) * 0.24;
+        result += tint * edge * 0.12;
         gl_FragColor = vec4(result, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }
     `,
-    toneMapped: false,
+    // Render targets contain linear HDR. Three applies this material's tone
+    // mapping only for the final canvas, including when a nested portal is used.
+    toneMapped: true,
     side: THREE.FrontSide,
   });
 }
 
-/** Two reusable lab apertures. Rendering is bounded to two nonrecursive views. */
+/** Live windows at the game render cadence. At most two primary views and one
+ * nested view per primary; no target is ever sampled while it is being written. */
 export class LabPortals {
-  constructor({ scene, renderer, camera }) {
+  constructor({ scene, renderer, camera, maxResolution = 1280, recursion = true, samples = 4 }) {
     this.scene = scene;
     this.renderer = renderer;
     this.camera = camera;
     this.portals = [null, null];
-    this.targets = [0, 1].map(() => new THREE.WebGLRenderTarget(384, 216, {
-      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
-      generateMipmaps: false, depthBuffer: true, stencilBuffer: false,
-    }));
+    this.maxResolution = maxResolution;
+    this.recursion = recursion;
+    const options = targetOptions(renderer, samples);
+    this.targets = [0, 1].map(() => new THREE.WebGLRenderTarget(1, 1, options));
+    this.bounceTarget = new THREE.WebGLRenderTarget(1, 1, { ...options, samples: 0 });
     this.virtualCamera = new THREE.PerspectiveCamera();
+    this.nestedCamera = new THREE.PerspectiveCamera();
     this._rendering = false;
-    this._lastRenderTime = -Infinity;
-    this.renderInterval = 1 / 30;
+    this.diagnostics = { cadence: 'every-render-frame', passes: 0, visible: 0, nested: 0, width: 1, height: 1, samples: options.samples, hdr: options.type === THREE.HalfFloatType };
   }
 
   get ready() { return this.portals.every(Boolean); }
@@ -149,16 +208,16 @@ export class LabPortals {
     group.position.copy(frame.position).addScaledVector(frame.normal, 0.036);
     group.quaternion.copy(frame.quaternion);
     const material = portalSurface(color, this.targets[index].texture);
-    const surface = new THREE.Mesh(new THREE.CircleGeometry(1, 64), material);
+    const surface = new THREE.Mesh(new THREE.CircleGeometry(1, 128), material);
     surface.scale.set(frame.width, frame.height, 1);
     surface.renderOrder = 2;
     group.add(surface);
-    const rim = new THREE.Mesh(new THREE.RingGeometry(1.015, 1.067, 64), new THREE.MeshBasicMaterial({ color, toneMapped: false }));
+    const rim = new THREE.Mesh(new THREE.RingGeometry(1.002, 1.043, 128), new THREE.MeshBasicMaterial({ color }));
     rim.scale.set(frame.width, frame.height, 1);
     rim.position.z = 0.008;
     group.add(rim);
-    const halo = new THREE.Mesh(new THREE.RingGeometry(1.065, 1.13, 64), new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+    const halo = new THREE.Mesh(new THREE.RingGeometry(1.04, 1.10, 128), new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.13, depthWrite: false, blending: THREE.AdditiveBlending,
     }));
     halo.scale.set(frame.width, frame.height, 1);
     halo.position.z = 0.003;
@@ -166,7 +225,6 @@ export class LabPortals {
     this.scene.add(group);
     Object.assign(frame, { group, surface, rim, halo });
     this.portals[index] = frame;
-    this._lastRenderTime = -Infinity;
     return frame;
   }
 
@@ -205,61 +263,104 @@ export class LabPortals {
   }
 
   update(time = 0) {
-    this.portals.forEach((frame, index) => {
+    this.portals.forEach((frame) => {
       if (!frame) return;
       frame.surface.material.uniforms.time.value = time;
       frame.surface.material.uniforms.linked.value = this.ready ? 1 : 0;
-      frame.halo.material.opacity = 0.14 + 0.06 * Math.sin(time * 2.8 + index);
     });
+  }
+
+  _prepareCamera(source, entry, exit, target) {
+    source.updateMatrixWorld(true);
+    const eye = new THREE.Vector3().setFromMatrixPosition(source.matrixWorld);
+    const rotation = source.getWorldQuaternion(new THREE.Quaternion());
+    target.copy(source, false);
+    target.position.copy(transformPortalPoint(eye, entry, exit));
+    target.quaternion.copy(portalRotation(entry, exit)).multiply(rotation);
+    target.scale.set(1, 1, 1);
+    target.updateMatrixWorld(true);
+    // A nested camera needs a fresh projection, not the preceding exit plane.
+    target.projectionMatrix.copy(this.camera.projectionMatrix);
+    applyPortalObliqueClipping(target, exit);
+    return target;
+  }
+
+  _draw(target, camera, rect) {
+    const renderer = this.renderer;
+    renderer.setRenderTarget(target);
+    renderer.setViewport(0, 0, target.width, target.height);
+    renderer.setScissor(rect.x, rect.y, rect.width, rect.height);
+    renderer.setScissorTest(true);
+    renderer.clear();
+    renderer.render(this.scene, camera);
+    this.diagnostics.passes++;
   }
 
   render(time = 0) {
     this.update(time);
+    this.diagnostics.passes = 0; this.diagnostics.visible = 0; this.diagnostics.nested = 0;
     if (!this.ready || !this.renderer || !this.camera || this._rendering) return;
-    if (time - this._lastRenderTime < this.renderInterval && time >= this._lastRenderTime) return;
-    this._lastRenderTime = time;
     const renderer = this.renderer;
     const targetBefore = renderer.getRenderTarget();
+    const faceBefore = renderer.getActiveCubeFace?.() || 0;
+    const mipBefore = renderer.getActiveMipmapLevel?.() || 0;
     const viewportBefore = renderer.getViewport(new THREE.Vector4());
     const scissorBefore = renderer.getScissor(new THREE.Vector4());
     const scissorTestBefore = renderer.getScissorTest();
     const xrBefore = renderer.xr.enabled;
     const shadowBefore = renderer.shadowMap.autoUpdate;
     const visibleBefore = this.portals.map((frame) => frame.group.visible);
+    const surfacesBefore = this.portals.map((frame) => ({
+      visible: frame.surface.visible,
+      texture: frame.surface.material.uniforms.view.value,
+      linked: frame.surface.material.uniforms.linked.value,
+    }));
     this.camera.updateMatrixWorld(true);
-    const eye = new THREE.Vector3().setFromMatrixPosition(this.camera.matrixWorld);
-    const eyeRotation = new THREE.Quaternion().setFromRotationMatrix(this.camera.matrixWorld);
+    const buffer = renderer.getDrawingBufferSize?.(new THREE.Vector2()) || new THREE.Vector2(viewportBefore.z, viewportBefore.w);
+    const size = portalTargetSize(buffer.x, buffer.y, this.maxResolution);
+    Object.assign(this.diagnostics, size);
+    for (const target of [...this.targets, this.bounceTarget]) {
+      if (target.width !== size.width || target.height !== size.height) target.setSize(size.width, size.height);
+    }
+    const visible = this.portals.map((frame, index) => visibleBefore[index]
+      ? portalViewportRect(frame, this.camera, size.width, size.height) : null);
+    this.diagnostics.visible = visible.filter(Boolean).length;
+    if (!this.diagnostics.visible) return;
     this._rendering = true;
-    this.portals.forEach((frame) => { frame.group.visible = false; });
     try {
       renderer.xr.enabled = false;
       renderer.shadowMap.autoUpdate = false;
-      renderer.setScissorTest(false);
       for (let index = 0; index < 2; index++) {
+        if (!visible[index]) continue;
         const entry = this.portals[index];
         const exit = this.portals[1 - index];
-        if (eye.clone().sub(entry.position).dot(entry.normal) <= 0.02) continue;
-        const virtual = this.virtualCamera;
-        virtual.copy(this.camera, false);
-        virtual.position.copy(transformPortalPoint(eye, entry, exit));
-        virtual.quaternion.copy(portalRotation(entry, exit)).multiply(eyeRotation);
-        virtual.scale.set(1, 1, 1);
-        virtual.updateMatrixWorld(true);
-        virtual.projectionMatrix.copy(this.camera.projectionMatrix);
-        applyPortalObliqueClipping(virtual, exit);
-        const aspect = this.camera.aspect || 16 / 9;
-        const width = aspect >= 1 ? 384 : Math.max(128, Math.round(384 * aspect));
-        const height = aspect >= 1 ? Math.max(128, Math.round(384 / aspect)) : 384;
-        const target = this.targets[index];
-        if (target.width !== width || target.height !== height) target.setSize(width, height);
-        renderer.setRenderTarget(target);
-        renderer.setViewport(0, 0, width, height);
-        renderer.clear();
-        renderer.render(this.scene, virtual);
+        const virtual = this._prepareCamera(this.camera, entry, exit, this.virtualCamera);
+        this.portals.forEach((frame) => { frame.group.visible = false; });
+        // The exit is back-facing from the virtual eye. Only the other aperture
+        // can be seen again, so one additional texture suffices for recursion.
+        const nestedRect = this.recursion && visibleBefore[index]
+          ? portalViewportRect(entry, virtual, size.width, size.height) : null;
+        if (nestedRect) {
+          const nested = this._prepareCamera(virtual, entry, exit, this.nestedCamera);
+          this._draw(this.bounceTarget, nested, nestedRect);
+          entry.group.visible = true;
+          entry.surface.visible = true;
+          entry.surface.material.uniforms.view.value = this.bounceTarget.texture;
+          entry.surface.material.uniforms.linked.value = 1;
+          this.diagnostics.nested++;
+        }
+        this._draw(this.targets[index], virtual, visible[index]);
+        // The next primary view must start with its own texture bindings.
+        entry.surface.material.uniforms.view.value = surfacesBefore[index].texture;
       }
     } finally {
-      this.portals.forEach((frame, index) => { frame.group.visible = visibleBefore[index]; });
-      renderer.setRenderTarget(targetBefore);
+      this.portals.forEach((frame, index) => {
+        frame.group.visible = visibleBefore[index];
+        frame.surface.visible = surfacesBefore[index].visible;
+        frame.surface.material.uniforms.view.value = surfacesBefore[index].texture;
+        frame.surface.material.uniforms.linked.value = surfacesBefore[index].linked;
+      });
+      renderer.setRenderTarget(targetBefore, faceBefore, mipBefore);
       renderer.setViewport(viewportBefore);
       renderer.setScissor(scissorBefore);
       renderer.setScissorTest(scissorTestBefore);
@@ -269,7 +370,7 @@ export class LabPortals {
     }
   }
 
-  dispose() { this.clear(); this.targets.forEach((target) => target.dispose()); }
+  dispose() { this.clear(); this.targets.forEach((target) => target.dispose()); this.bounceTarget.dispose(); }
 }
 
 export default LabPortals;

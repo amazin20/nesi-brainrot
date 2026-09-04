@@ -154,6 +154,10 @@ export function solveLabLeg(forward, down, upperLength = 0.117, lowerLength = Ma
  * triggerInteraction('pickup'|'place') reaches and recovers over 0.68/0.62s;
  * callers remain responsible for the actual item transfer. triggerShot() adds
  * a short local right-hand recoil. HandR remains the device attachment bone.
+ * trigger('celebrate'|'success'|'curious'|'jump'|'anticipate_jump'|'catch'|'drop')
+ * adds a short expression without moving the physics root. triggerJump() is an
+ * anticipation alias. update is intended for every rendered frame; bounded
+ * 1/240s animation substeps keep blends consistent across display refresh rates.
  */
 export class LabPlayerAnimator {
   constructor({ visual, carrier, onStateChange = () => {} }) {
@@ -202,6 +206,10 @@ export class LabPlayerAnimator {
       aimBlend: this.aimBlend,
       carryBlend: this.carryBlend,
       recoil: this.recoil,
+      expression: this.expression ? { ...this.expression } : null,
+      idle: { blend: this.idleBlend, footTap: this.idleFootTap },
+      anticipation: this.anticipation,
+      handoff: { progress: this.holsterProgress, stowing: this.carryingRequested, blend: this.handoffBlend },
       interaction: this.interaction ? { ...this.interaction, blend: this.interactionBlend } : null,
       movingJoints: Object.values(this.bones).filter((bone) => Math.abs(bone.quaternion.w) < 0.99999).length,
     };
@@ -228,6 +236,11 @@ export class LabPlayerAnimator {
     this.transitionRemaining = 0;
     this.interaction = null;
     this.interactionBlend = 0;
+    this.expression = null;
+    this.anticipationAge = 1;
+    this.anticipation = this.idleBlend = this.idleFootTap = 0;
+    this.holsterProgress = this.handoffBlend = 0;
+    this.carryingRequested = false;
     this.footContact.L = this.footContact.R = 1;
     this.rig.mesh.updateWorldMatrix(true, true);
     this.rig.skeleton.update();
@@ -235,10 +248,22 @@ export class LabPlayerAnimator {
   }
 
   triggerLanding(impact = 4) {
-    this.landVelocity = Math.min(this.landVelocity, -clamp(Math.abs(impact), 0.5, 14) * 0.10);
+    this.landVelocity = Math.min(this.landVelocity, -clamp(Math.abs(Number.isFinite(impact) ? impact : 4), 0.5, 14) * 0.10);
   }
 
   triggerHit() { this.triggerLanding(2); }
+
+  trigger(kind) {
+    if (kind === 'jump' || kind === 'anticipate_jump') { this.anticipationAge = 0; return true; }
+    if (kind === 'catch' || kind === 'drop') return this.triggerInteraction(kind === 'catch' ? 'pickup' : 'place');
+    if (kind === 'success') kind = 'celebrate';
+    if (kind !== 'celebrate' && kind !== 'curious') return false;
+    if (this.expression?.kind === kind) return true;
+    this.expression = { kind, elapsed: 0, duration: kind === 'celebrate' ? 1.15 : 1.35 };
+    return true;
+  }
+
+  triggerJump() { return this.trigger('jump'); }
   triggerInteraction(kind = 'pickup') {
     if (kind !== 'pickup' && kind !== 'place') return false;
     this.interaction = { kind, elapsed: 0, duration: kind === 'pickup' ? 0.68 : 0.62 };
@@ -251,7 +276,24 @@ export class LabPlayerAnimator {
     return true;
   }
 
-  update({ dt = 1 / 60, speed = 0, velocity = ORIGIN, grounded = true, turnRate = 0,
+  update(input = {}) {
+    const dt = clamp(Number.isFinite(input.dt ?? 1 / 60) ? (input.dt ?? 1 / 60) : 0, 0, 0.05);
+    const iterations = Math.max(1, Math.ceil(dt * 240 - 1e-9));
+    const step = dt / iterations;
+    const startTime = Number.isFinite(input.elapsed) ? input.elapsed - dt : this.elapsed;
+    this.rig.mesh.getWorldScale(this.scaleVector);
+    this.modelScale = Math.max(0.1, this.scaleVector.length() / Math.sqrt(3));
+    for (let index = 0; index < iterations; index += 1) {
+      this.stepPose({ ...input, dt: step, elapsed: startTime + step * (index + 1) });
+    }
+    // Updating the skeleton once per render keeps substeps inexpensive on the
+    // original dense model and lets the attached device follow the newest pose.
+    this.rig.mesh.updateWorldMatrix(true, true);
+    this.rig.skeleton.update();
+    this.snapCarrierToBody();
+  }
+
+  stepPose({ dt = 1 / 60, speed = 0, velocity = ORIGIN, grounded = true, turnRate = 0,
     carrying = false, phase = false, elapsed, weapon = true, aiming = false, aimPitch = 0,
     moveForward = 1, moveRight = 0 } = {}) {
     dt = clamp(Number.isFinite(dt) ? dt : 0, 0, 0.05);
@@ -291,6 +333,9 @@ export class LabPlayerAnimator {
     this.moveBlend = damp(this.moveBlend, smooth(0.04, 1.5, this.speed), 10, dt);
     this.airBlend = damp(this.airBlend, grounded && !phase ? 0 : 1, 14, dt);
     this.carryBlend = damp(this.carryBlend, carrying ? 1 : 0, 9, dt);
+    this.carryingRequested = !!carrying;
+    this.holsterProgress = clamp(this.holsterProgress + (carrying ? 1 : -1) * dt / 0.32, 0, 1);
+    this.handoffBlend = Math.sin(this.holsterProgress * Math.PI) ** 2;
     this.weaponRequested = !!weapon && !carrying;
     this.weaponBlend = damp(this.weaponBlend, weapon && !carrying ? 1 : 0, 12, dt);
     this.aimBlend = damp(this.aimBlend, aiming && weapon && !carrying ? 1 : 0, 12, dt);
@@ -306,33 +351,57 @@ export class LabPlayerAnimator {
     }
     this.interactionBlend = damp(this.interactionBlend, reach, 18, dt);
 
+    this.anticipationAge += dt;
+    this.anticipation = smooth(0, 0.035, this.anticipationAge) * (1 - smooth(0.04, 0.18, this.anticipationAge));
+    let celebrate = 0, curious = 0, expressionTime = 0;
+    if (this.expression) {
+      this.expression.elapsed = Math.min(this.expression.duration, this.expression.elapsed + dt);
+      expressionTime = this.expression.elapsed;
+      const envelope = smooth(0, 0.18, expressionTime)
+        * (1 - smooth(this.expression.duration - 0.3, this.expression.duration, expressionTime));
+      if (this.expression.kind === 'celebrate') celebrate = envelope;
+      else curious = envelope;
+      if (expressionTime >= this.expression.duration) this.expression = null;
+    }
     const run = smooth(2.5, 5.7, this.speed);
-    this.rig.mesh.getWorldScale(this.scaleVector);
-    const modelScale = Math.max(0.1, this.scaleVector.length() / Math.sqrt(3));
     const stride = THREE.MathUtils.lerp(0.050, 0.115, run);
     const turning = smooth(0.2, 1.8, Math.abs(this.turn)) * (1 - this.moveBlend);
-    const frequency = Math.max(clamp(this.speed / Math.max(0.5, stride * 4 * modelScale), 0, 3.2), turning * 1.5);
+    const frequency = Math.max(clamp(this.speed / Math.max(0.5, stride * 4 * this.modelScale), 0, 3.2), turning * 1.5);
     this.gait = (this.gait + dt * frequency) % 1;
-    const iterations = Math.max(1, Math.ceil(dt * 120));
-    for (let i = 0; i < iterations; i += 1) {
-      const step = dt / iterations;
-      this.landVelocity += (-this.landing * 240 - this.landVelocity * 23) * step;
-      this.landing += this.landVelocity * step;
-    }
+    // Closed-form damped spring: a soft rebound, independent of frame size.
+    const decay = Math.exp(-10.5 * dt), omega = Math.sqrt(260 - 10.5 ** 2);
+    const sine = Math.sin(omega * dt), cosine = Math.cos(omega * dt);
+    const landing = this.landing, landVelocity = this.landVelocity;
+    this.landing = decay * (landing * cosine + (landVelocity + 10.5 * landing) / omega * sine);
+    this.landVelocity = decay * (landVelocity * cosine - (10.5 * landVelocity + 260 * landing) / omega * sine);
     this.landing = clamp(this.landing, -0.065, 0.022);
     const ground = 1 - this.airBlend;
     const moving = this.moveBlend * ground;
     const turnStep = turning * ground;
+    this.idleBlend = damp(this.idleBlend, ground * (1 - this.moveBlend) * (1 - turning)
+      * (1 - this.aimBlend) * (1 - this.interactionBlend), 5, dt);
+    const idleShift = Math.sin(this.elapsed * 1.45) * this.idleBlend;
+    const tapTime = (this.elapsed + 0.6) % 5.8;
+    this.idleFootTap = (tapTime > 3.7 && tapTime < 4.6 ? Math.sin((tapTime - 3.7) / 0.9 * Math.PI * 2) ** 2 : 0)
+      * this.idleBlend * (1 - this.carryBlend);
+    const joy = celebrate * ground * (1 - this.aimBlend);
+    const hop = Math.sin(clamp(expressionTime / 0.6, 0, 1) * Math.PI) ** 2 * joy;
     const compression = (0.024 + run * 0.042) * moving + 0.010 * turnStep - this.landing;
     this.bones.Body.position.copy(this.rig.rest.Body);
-    this.bones.Body.position.z += compression + this.interactionBlend * 0.011;
+    this.bones.Body.position.z += compression + this.interactionBlend * 0.011 + this.anticipation * 0.014 - hop * 0.012
+      + Math.sin(this.elapsed * 2.1) * 0.0007 * this.idleBlend;
+    this.bones.Body.position.x += idleShift * 0.004;
     const body = this.jointTargets.Body;
     body.set(0.035 * moving * this.directionForward + 0.055 * this.inertiaForward * ground
       + 0.035 * this.carryBlend + this.interactionBlend * 0.055 - this.landing * 0.55,
-      -0.03 * moving * this.directionRight - 0.045 * this.inertiaRight * ground,
+      -0.03 * moving * this.directionRight - 0.045 * this.inertiaRight * ground - idleShift * 0.009,
       Math.sin(this.gait * Math.PI * 2) * 0.016 * moving - this.turn * 0.018);
     this.jointTargets.Head.set(-body.x * 0.6 - this.aimPitch * this.aimBlend * 0.2 + Math.sin(this.elapsed * 1.7) * 0.004,
-      -body.y * 0.65, -body.z * 0.55);
+      -body.y * 0.65 + curious * 0.065 + joy * Math.sin(expressionTime * 10) * 0.03,
+      -body.z * 0.55 + Math.sin(this.elapsed * 0.85) * 0.055 * this.idleBlend
+        - curious * 0.14 + joy * Math.sin(expressionTime * 9) * 0.055);
+    this.jointTargets.Head.x += Math.sin(this.gait * Math.PI * 4) * moving * run * 0.013
+      + curious * 0.025 + joy * Math.sin(expressionTime * 12) * 0.025;
 
     for (const [side, offset, sign] of [['L', 0, -1], ['R', 0.5, 1]]) {
       const cycle = (this.gait + offset) % 1;
@@ -354,14 +423,25 @@ export class LabPlayerAnimator {
       const leg = solveLabLeg(forward, down);
       const legBlend = clamp(moving + turnStep + Math.abs(this.landing) * 8, 0, 1);
       const lateralRoll = clamp(Math.atan2(lateral, Math.max(0.09, down)), -0.21, 0.21);
-      const jumpFold = phase ? 0.50 : vy > 0 ? 0.42 : 0.20;
+      const jumpFold = (phase ? 0.50 : vy > 0 ? 0.42 : 0.20) + this.anticipation * 0.08;
       this.jointTargets[`Thigh${side}`].set(leg.hip * legBlend - jumpFold * this.airBlend,
         lateralRoll, sign * 0.012 * moving - this.turn * 0.018 * turnStep);
       this.jointTargets[`Shin${side}`].set(leg.knee * legBlend + jumpFold * 1.75 * this.airBlend, 0, 0);
       this.jointTargets[`Foot${side}`].set(leg.ankle * legBlend - jumpFold * 0.65 * this.airBlend,
         -lateralRoll, this.turn * 0.018 * turnStep);
       this.footContact[side] = grounded && !phase && (planted || moving + turnStep < 0.05) ? ground : 0;
-      const swing = Math.sin((cycle + 0.05) * Math.PI * 2) * (0.20 + 0.20 * run) * moving
+      if (this.idleBlend > 0.001) {
+        const tap = side === 'L' ? this.idleFootTap : 0;
+        this.jointTargets[`Thigh${side}`].x -= tap * 0.04;
+        this.jointTargets[`Shin${side}`].x += tap * 0.09;
+        this.jointTargets[`Foot${side}`].x -= tap * 0.08;
+        this.jointTargets[`Thigh${side}`].y -= idleShift * 0.019;
+        this.jointTargets[`Foot${side}`].y += idleShift * 0.019;
+        if (tap > 0.25) this.footContact[side] = 0;
+      }
+      const swingPhase = (cycle + 0.05) * Math.PI * 2;
+      const swing = clamp(Math.sin(swingPhase) * (0.20 + 0.20 * run)
+        + Math.sin(swingPhase * 2) * run * 0.025, -0.42, 0.42) * moving
         * (this.directionForward + this.directionRight * 0.35);
       const idle = Math.sin(this.elapsed * 1.7 + offset) * 0.011;
       const arm = this.jointTargets[`Arm${side}`];
@@ -369,7 +449,14 @@ export class LabPlayerAnimator {
       const hand = this.jointTargets[`Hand${side}`];
       arm.set(swing + idle - this.airBlend * 0.24, sign * 0.04, sign * this.airBlend * 0.10);
       forearm.set(-0.09 - Math.max(0, -swing) * 0.35 - this.airBlend * 0.18, 0, 0);
-      hand.set(0.02, 0, 0);
+      hand.set(0.02, 0, side === 'L' ? Math.sin(swingPhase + 0.4) * run * moving * 0.025 : 0);
+      if (side === 'L') {
+        const wave = joy * (1 - this.carryBlend);
+        arm.x = THREE.MathUtils.lerp(arm.x, -0.38 - Math.sin(expressionTime * 13) * 0.055, wave);
+        arm.z = THREE.MathUtils.lerp(arm.z, 0.045 + Math.sin(expressionTime * 13) * 0.045, wave);
+        forearm.x = THREE.MathUtils.lerp(forearm.x, -0.57 + Math.sin(expressionTime * 13 + 0.6) * 0.07, wave);
+        hand.z += Math.sin(expressionTime * 14) * wave * 0.20;
+      }
       if (side === 'R') {
         const pitch = this.aimPitch * this.aimBlend;
         const hold = this.weaponBlend;
@@ -385,14 +472,24 @@ export class LabPlayerAnimator {
       // Cargo brings both hands to the same supported posture; interaction adds
       // a short reach around the caller's immediate pickup/place item transfer.
       arm.x = THREE.MathUtils.lerp(arm.x, -0.48, this.carryBlend);
-      arm.y = THREE.MathUtils.lerp(arm.y, sign * 0.10, this.carryBlend);
-      arm.z = THREE.MathUtils.lerp(arm.z, -sign * 0.07, this.carryBlend);
+      arm.y = THREE.MathUtils.lerp(arm.y, -sign * 0.08, this.carryBlend);
+      arm.z = THREE.MathUtils.lerp(arm.z, sign * 0.06, this.carryBlend);
       forearm.x = THREE.MathUtils.lerp(forearm.x, -0.68, this.carryBlend);
+      // Bring the oversized gloves onto the cargo's rear sides. Small inward
+      // rotations close the span without increasing the jacket's shoulder bend.
+      forearm.y = -sign * 0.10 * this.carryBlend;
       hand.x = THREE.MathUtils.lerp(hand.x, 0.14, this.carryBlend);
       hand.y = THREE.MathUtils.lerp(hand.y, sign * 0.10, this.carryBlend);
       hand.z = THREE.MathUtils.lerp(hand.z, 0, this.carryBlend);
       arm.x = THREE.MathUtils.lerp(arm.x, -0.34, this.interactionBlend * 0.65);
       forearm.x = THREE.MathUtils.lerp(forearm.x, -0.51, this.interactionBlend * 0.65);
+      if (side === 'R') {
+        // Lower the device hand through a reversible handoff to the body mount.
+        // Both animator and device use linear progress over exactly 0.32s.
+        arm.x = THREE.MathUtils.lerp(arm.x, 0.24, this.handoffBlend * 0.85);
+        forearm.x = THREE.MathUtils.lerp(forearm.x, -0.16, this.handoffBlend * 0.85);
+        hand.x = THREE.MathUtils.lerp(hand.x, 0.02, this.handoffBlend * 0.85);
+      }
     }
 
     for (const { name } of LAB_PLAYER_JOINTS) {
@@ -409,12 +506,11 @@ export class LabPlayerAnimator {
     const next = phase ? 'phase' : !grounded ? (vy > 0 ? 'jump' : 'fall')
       : Math.abs(this.landing) > 0.005 ? 'landing'
         : this.interaction ? this.interaction.kind
-          : carrying ? (this.speed > 0.2 ? 'carry_walk' : 'carry_idle')
+          : this.expression ? this.expression.kind
+            : this.anticipation > 0.05 ? 'anticipate_jump'
+              : carrying ? (this.speed > 0.2 ? 'carry_walk' : 'carry_idle')
             : aiming && weapon ? (this.speed > 0.2 ? 'aim_walk' : 'aim_idle') : this.locomotionState;
     if (next !== this.state) { this.state = next; this.onStateChange({ state: next, label: next }); }
-    this.rig.mesh.updateWorldMatrix(true, true);
-    this.rig.skeleton.update();
-    this.snapCarrierToBody();
   }
 
   snapCarrierToBody() {

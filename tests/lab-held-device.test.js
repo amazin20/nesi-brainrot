@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as THREE from 'three';
-import { LAB_DEVICE_CALIBRATION, LabHeldDevice } from '../src/game/LabHeldDevice.js';
+import { LAB_DEVICE_CALIBRATION, LAB_DEVICE_TRANSITION_SECONDS, LabHeldDevice } from '../src/game/LabHeldDevice.js';
 
 function makeDevice() {
   const scene = new THREE.Group(), playerRoot = new THREE.Group(), visual = new THREE.Group();
@@ -73,27 +73,101 @@ test('device compensates source bone scale and retains original node, geometry a
   mesh.updateMatrix(); assert.deepEqual(mesh.matrix.elements, nodeTransform.elements);
 });
 
-test('carry, teleport and draw transitions stay fixed to a bone with no floating frames', () => {
-  const { device, playerRoot, Body, HandR } = makeDevice();
+test('stow and draw move continuously between the palm and hip without a visibility blink', () => {
+  const { device, Body, HandR } = makeDevice();
   device.fire(1);
-  for (const carrying of [true, true, false, true, false]) {
-    playerRoot.position.add(new THREE.Vector3(9, 2, -4));
-    playerRoot.rotation.y += .8;
-    Body.rotation.x += .1;
-    device.update({ dt: 1 / 60, carrying });
-    assert.equal(device.attachment.parent, carrying ? Body : HandR);
-    assert.equal(device.state, carrying ? 'holstered' : 'held');
-    assert.ok(device.diagnostics.socketDistance < 1e-12);
-    if (!carrying) assert.ok(device.diagnostics.handDistance < 1e-12);
-    else {
-      assert.equal(device.fire(0), false);
-      assert.equal(device.flash.visible, false);
-      assert.equal(device.light.intensity, 0);
+  for (const carrying of [true, false]) {
+    let before = device.attachment.getWorldPosition(new THREE.Vector3());
+    let previousRotation = device.attachment.getWorldQuaternion(new THREE.Quaternion());
+    device.update({ dt: 0, carrying });
+    assert.ok(device.attachment.getWorldPosition(new THREE.Vector3()).distanceTo(before) < 1e-12);
+    for (let frame = 0; frame < 32; frame += 1) {
+      device.update({ dt: .01, carrying });
+      const position = device.attachment.getWorldPosition(new THREE.Vector3());
+      const rotation = device.attachment.getWorldQuaternion(new THREE.Quaternion());
+      assert.ok(position.distanceTo(before) < .03, `position popped during frame ${frame}`);
+      assert.ok(rotation.angleTo(previousRotation) < .16, `orientation popped during frame ${frame}`);
+      assert.equal(device.model.visible, true);
+      assert.equal(device.attachment.visible, true);
+      assert.ok(device.diagnostics.socketDistance < 1e-12);
+      if (frame < 31) {
+        assert.equal(device.state, carrying ? 'stowing' : 'drawing');
+        assert.equal(device.fire(0), false);
+        assert.equal(device.attachment.parent, Body);
+      }
+      before = position; previousRotation = rotation;
     }
+    assert.equal(device.state, carrying ? 'holstered' : 'held');
+    assert.equal(device.attachment.parent, carrying ? Body : HandR);
+    assert.equal(device.holsterProgress, carrying ? 1 : 0);
+    assert.equal(device.flash.visible, false);
   }
-  device.update({ carrying: true }); device.reset();
-  assert.equal(device.attachment.parent, HandR);
   assert.ok(device.diagnostics.handDistance < 1e-12);
+});
+
+test('reversing a partial stow preserves the exact pose and retraces the continuous path', () => {
+  const { device } = makeDevice();
+  for (let frame = 0; frame < 13; frame += 1) device.update({ dt: .01, carrying: true });
+  const progress = device.holsterProgress;
+  const position = device.attachment.getWorldPosition(new THREE.Vector3());
+  const rotation = device.attachment.getWorldQuaternion(new THREE.Quaternion());
+  device.update({ dt: 0, carrying: false });
+  assert.equal(device.state, 'drawing');
+  assert.equal(device.holsterProgress, progress);
+  assert.ok(device.attachment.getWorldPosition(new THREE.Vector3()).distanceTo(position) < 1e-12);
+  assert.ok(device.attachment.getWorldQuaternion(new THREE.Quaternion()).angleTo(rotation) < 1e-7);
+  for (let frame = 0; frame < 13; frame += 1) device.update({ dt: .01, carrying: false });
+  assert.equal(device.state, 'held');
+  assert.ok(device.diagnostics.handDistance < 1e-12);
+  device.update({ carrying: true }); device.reset();
+  assert.equal(device.state, 'held');
+  assert.equal(device.holsterProgress, 0);
+});
+
+test('every transition frame follows a portal transform instantly, with no world-space lag', () => {
+  const { device, playerRoot, HandR, Body } = makeDevice();
+  const inverse = new THREE.Matrix4();
+  for (let frame = 0; frame < 27; frame += 1) {
+    HandR.rotation.x = -.67 + Math.sin(frame * .13) * .2;
+    Body.rotation.z = Math.sin(frame * .07) * .08;
+    device.update({ dt: .01, carrying: true });
+    playerRoot.updateWorldMatrix(true, true);
+    inverse.copy(playerRoot.matrixWorld).invert();
+    const localBefore = inverse.clone().multiply(device.attachment.matrixWorld);
+    playerRoot.position.add(new THREE.Vector3(11, 3, -8));
+    playerRoot.rotation.y += .73;
+    device.update({ dt: 0, carrying: true });
+    playerRoot.updateWorldMatrix(true, true);
+    inverse.copy(playerRoot.matrixWorld).invert();
+    const localAfter = inverse.clone().multiply(device.attachment.matrixWorld);
+    for (let i = 0; i < 16; i += 1) assert.ok(Math.abs(localBefore.elements[i] - localAfter.elements[i]) < 1e-11);
+    assert.ok(device.diagnostics.socketDistance < 1e-11);
+  }
+});
+
+test('handoff duration and pose agree at equal elapsed time across render frame rates', () => {
+  const devices = [30, 60, 120].map((fps) => {
+    const { device } = makeDevice();
+    for (let i = 0; i < fps / 5; i += 1) device.update({ dt: 1 / fps, carrying: true });
+    return device;
+  });
+  const expected = .2 / LAB_DEVICE_TRANSITION_SECONDS;
+  for (const device of devices) {
+    assert.ok(Math.abs(device.holsterProgress - expected) < 1e-12);
+    assert.ok(device.attachment.position.distanceTo(devices[0].attachment.position) < 1e-12);
+    assert.ok(device.attachment.quaternion.angleTo(devices[0].attachment.quaternion) < 1e-7);
+  }
+});
+
+test('small wrist yaw cannot flip the half-turn holster interpolation to its other side', () => {
+  const { device, HandR } = makeDevice();
+  for (let frame = 0; frame < 16; frame += 1) device.update({ dt: .01, carrying: true });
+  HandR.rotation.y = -.00001;
+  device.update({ dt: 0, carrying: true });
+  const before = device.attachment.quaternion.clone();
+  HandR.rotation.y = .00001;
+  device.update({ dt: 0, carrying: true });
+  assert.ok(before.angleTo(device.attachment.quaternion) < .0001);
 });
 
 test('portal pulse changes only controller-owned effects and expires without moving the grip', () => {

@@ -1,6 +1,5 @@
 import './styles.css';
 import { LabGame } from './game/LabGame.js';
-import { formatTime } from './game/rules.js';
 
 const $ = (selector) => document.querySelector(selector);
 const query = new URLSearchParams(location.search);
@@ -10,11 +9,10 @@ const elements = {
   game: $('#game'), loading: $('#loading'), loadingBar: $('#loading-bar'),
   loadingLabel: $('#loading-label'), loadingPercent: $('#loading-percent'),
   start: $('#start-screen'), play: $('#play-button'), hud: $('#hud'),
-  objective: $('#objective'), cargo: $('#cargo-status'), timer: $('#timer'),
-  chamber: $('#chamber'), progress: $('#progress-bar'), portalStatus: $('#portal-status'),
+  cargo: $('#cargo-status'), chamber: $('#chamber'), portalStatus: $('#portal-status'),
   toast: $('#toast'), pause: $('#pause-screen'), pauseButton: $('#pause-button'),
   resume: $('#resume-button'), restart: $('#restart-button'), win: $('#win-screen'),
-  resultTime: $('#result-time'), playAgain: $('#play-again-button'),
+  playAgain: $('#play-again-button'),
   mobile: $('#mobile-controls'), joystick: $('#joystick'), knob: $('#joystick-knob'),
   jump: $('#jump-button'), error: $('#error-screen'), errorDetail: $('#error-detail'),
 };
@@ -107,20 +105,12 @@ const game = new LabGame({
     if (smokeMode) setTimeout(enterGame, 60);
     else elements.play.focus({ preventScroll: true });
   },
-  onHud: ({ elapsed, chamber, objective, hasCargo, progress, portalsReady, stage }) => {
-    elements.timer.textContent = formatTime(elapsed).slice(0, 5);
+  onHud: ({ chamber, hasCargo, portalsReady, friendStatus }) => {
     elements.chamber.textContent = chamber;
-    elements.objective.textContent = objective;
-    elements.cargo.textContent = hasCargo ? 'Куб у тебя' : 'Найди куб';
+    elements.cargo.textContent = friendStatus || (hasCargo ? 'Друг на руках' : 'Друг ждёт тебя');
     elements.cargo.classList.toggle('status--active', hasCargo);
-    elements.portalStatus.textContent = portalsReady ? 'Переход связан' : 'Создай пару переходов';
+    elements.portalStatus.textContent = portalsReady ? 'Порталы связаны' : 'Нужна пара порталов';
     elements.portalStatus.classList.toggle('status--active', portalsReady);
-    elements.progress.style.width = Math.round(Math.max(0, Math.min(1, progress)) * 100) + '%';
-    document.querySelectorAll('.chamber-step').forEach((step, index) => {
-      step.classList.toggle('chamber-step--current', index === stage);
-      step.classList.toggle('chamber-step--complete', index < stage);
-      step.setAttribute('aria-current', index === stage ? 'step' : 'false');
-    });
     document.documentElement.dataset.runtimeState = game.state;
   },
   onToast: showToast,
@@ -131,9 +121,8 @@ const game = new LabGame({
     if (paused) elements.resume.focus({ preventScroll: true });
     else document.activeElement?.blur?.();
   },
-  onWin: ({ elapsed }) => {
+  onWin: () => {
     setPlayState('won');
-    elements.resultTime.textContent = formatTime(elapsed);
     showScreen(elements.win, true);
     elements.playAgain.focus({ preventScroll: true });
     publishDiagnostics();

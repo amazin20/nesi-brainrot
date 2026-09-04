@@ -81,7 +81,9 @@ test('aim raises the right hold, follows vertical pitch, and blends back without
   assert.ok(Math.abs(animator.bones.ArmR.rotation.x) < 0.5, 'aim over-rotated the fused shoulder sleeve');
   assert.ok(Math.abs(animator.bones.ForearmR.rotation.x) < 0.7, 'aim over-rotated the sleeve elbow');
   advance(animator, 90);
-  assert.ok(localHand(animator, 'R').distanceTo(base) < 0.001);
+  const recovered = makeAnimator().animator;
+  advance(recovered, 270);
+  assert.ok(localHand(animator, 'R').distanceTo(localHand(recovered, 'R')) < 0.001, 'aim did not recover to the current idle pose');
 });
 
 test('backward and strafe gaits change actual leg trajectories in character-local directions', () => {
@@ -217,6 +219,9 @@ test('pickup/place reach, recover and blend to two-handed cargo with a carrier a
       assert.ok(Math.abs(animator.bones.ArmL.rotation.x - animator.bones.ArmR.rotation.x) < 0.001);
       assert.ok(animator.bones.ForearmL.rotation.x < -0.65);
       assert.ok(animator.diagnostics.weaponBlend < 0.001);
+      const left = localHand(animator, 'L'), right = localHand(animator, 'R');
+      assert.ok(right.x - left.x < 0.46, 'cargo grip stayed wider than the rear sides');
+      assert.ok((left.y + right.y) / 2 > 0.17, 'supporting hands did not reach the cargo');
     }
     assertFinitePose(animator);
   }
@@ -246,4 +251,121 @@ test('bad numeric inputs remain finite and reset clears all transient animation 
   assert.equal(animator.carryBlend, 0);
   assert.deepEqual(animator.footContact, { L: 1, R: 1 });
   for (const bone of Object.values(animator.bones)) assert.deepEqual(bone.quaternion.toArray(), [0, 0, 0, 1]);
+});
+
+test('living idle gently looks around, shifts weight and taps a foot without changing the physics root', () => {
+  const { animator, root } = makeAnimator();
+  const rootMatrix = root.matrix.toArray();
+  const yaw = [], shift = [];
+  let tap = 0, leftReleased = false;
+  for (let frame = 0; frame < 360; frame += 1) {
+    animator.update();
+    yaw.push(animator.bones.Head.rotation.z);
+    shift.push(animator.bones.Body.position.x);
+    tap = Math.max(tap, animator.diagnostics.idle.footTap);
+    leftReleased ||= animator.footContact.L === 0;
+  }
+  assert.ok(Math.max(...yaw) - Math.min(...yaw) > 0.07, 'idle head stayed frozen');
+  assert.ok(Math.max(...shift) - Math.min(...shift) > 0.006, 'idle never changed weight');
+  assert.ok(tap > 0.8 && leftReleased, 'idle foot tap never animated');
+  assert.deepEqual(root.matrix.toArray(), rootMatrix);
+  assert.equal(animator.state, 'idle');
+});
+
+test('curiosity, celebration and jump anticipation create bounded expressions and return to locomotion', () => {
+  const { animator, states } = makeAnimator();
+  advance(animator, 90);
+  assert.equal(animator.trigger('curious'), true);
+  advance(animator, 30);
+  assert.equal(animator.state, 'curious');
+  assert.ok(animator.bones.Head.rotation.y > 0.035, 'curiosity did not cock the head');
+  assert.equal(animator.trigger('success'), true);
+  const initialRight = animator.bones.ArmR.quaternion.clone();
+  let hop = 0, handWave = 0, raisedLeft = 0;
+  for (let frame = 0; frame < 90; frame += 1) {
+    if (frame === 20) {
+      const elapsed = animator.diagnostics.expression.elapsed;
+      animator.trigger('celebrate');
+      assert.equal(animator.diagnostics.expression.elapsed, elapsed, 'repeated success restarted an active celebration');
+    }
+    animator.update();
+    hop = Math.max(hop, animator.rig.rest.Body.z - animator.bones.Body.position.z);
+    handWave = Math.max(handWave, Math.abs(animator.bones.HandL.rotation.z));
+    raisedLeft = Math.max(raisedLeft, -animator.bones.ArmL.rotation.x);
+    assert.ok(Math.abs(animator.bones.ArmL.rotation.x) < 0.48, 'celebration over-bent the shoulder sleeve');
+    assert.ok(Math.abs(animator.bones.ForearmL.rotation.x) < 0.68, 'celebration over-bent the elbow sleeve');
+    assert.ok(initialRight.angleTo(animator.bones.ArmR.quaternion) < 0.002, 'celebration disturbed the calibrated device arm');
+  }
+  assert.ok(hop > 0.007 && handWave > 0.08 && raisedLeft > 0.3, 'celebration lacked a visible bounce and wave');
+  assert.equal(animator.diagnostics.expression, null);
+  assert.equal(animator.state, 'idle');
+  assert.equal(animator.triggerJump(), true);
+  advance(animator, 3);
+  assert.equal(animator.state, 'anticipate_jump');
+  assert.ok(animator.bones.Body.position.z > animator.rig.rest.Body.z + 0.009);
+  advance(animator, 15, { grounded: false, velocity: { y: 3 } });
+  assert.equal(animator.state, 'jump');
+  assert.equal(animator.trigger('unrecognized'), false);
+  assert.ok(states.includes('curious') && states.includes('celebrate'));
+  assertFinitePose(animator);
+});
+
+test('hand-to-body handoff reverses continuously and catch/drop aliases recover to supported cargo', () => {
+  const { animator } = makeAnimator();
+  advance(animator, 90);
+  assert.equal(animator.trigger('catch'), true);
+  advance(animator, 9, { carrying: true });
+  const midway = animator.diagnostics.handoff;
+  assert.ok(midway.progress > 0.45 && midway.progress < 0.5);
+  assert.ok(midway.blend > 0.95);
+  assert.ok(animator.bones.ForearmR.rotation.x > -0.45, 'device hand never lowered toward its body mount');
+  const beforeReverse = animator.bones.ForearmR.quaternion.clone();
+  animator.update({ carrying: false });
+  assert.ok(animator.diagnostics.handoff.progress < midway.progress);
+  assert.ok(animator.diagnostics.handoff.progress > 0.4, 'handoff restarted instead of reversing');
+  assert.ok(beforeReverse.angleTo(animator.bones.ForearmR.quaternion) < 0.08);
+  advance(animator, 60, { carrying: true });
+  assert.equal(animator.diagnostics.handoff.progress, 1);
+  assert.equal(animator.state, 'carry_idle');
+  assert.equal(animator.trigger('drop'), true);
+  advance(animator, 60);
+  assert.equal(animator.diagnostics.handoff.progress, 0);
+  assert.equal(animator.state, 'idle');
+});
+
+test('render-driven motion stays equivalent at 30, 60 and 144 Hz through expressions and movement', () => {
+  const sequence = [
+    { input: {}, event: 'curious' },
+    { input: { speed: 4 } },
+    { input: { speed: 3, moveForward: 0, moveRight: 1 } },
+    { input: {} },
+    { input: { aiming: true, aimPitch: 0.4 } },
+    { input: { carrying: true }, event: 'catch' },
+    { input: { carrying: true, speed: 2 } },
+    { input: { grounded: false, velocity: { y: 3 } }, event: 'drop' },
+    { input: { grounded: false, velocity: { y: -5 } } },
+    { input: {}, event: 'celebrate' },
+    { input: {} },
+  ];
+  const simulate = (fps) => {
+    const { animator } = makeAnimator();
+    return sequence.map(({ input, event }) => {
+      if (event) animator.trigger(event);
+      for (let frame = 0; frame < fps / 2; frame += 1) animator.update({ ...input, dt: 1 / fps });
+      return { position: animator.bones.Body.position.clone(), state: animator.state,
+        rotations: Object.fromEntries(LAB_PLAYER_JOINTS.map(({ name }) => [name, animator.bones[name].quaternion.clone()])) };
+    });
+  };
+  const reference = simulate(60);
+  for (const fps of [30, 144]) {
+    const sampled = simulate(fps);
+    for (let index = 0; index < reference.length; index += 1) {
+      assert.equal(sampled[index].state, reference[index].state, `${fps} Hz changed the state sequence`);
+      assert.ok(sampled[index].position.distanceTo(reference[index].position) < 0.002, `${fps} Hz changed body motion`);
+      for (const { name } of LAB_PLAYER_JOINTS) {
+        const difference = sampled[index].rotations[name].angleTo(reference[index].rotations[name]);
+        assert.ok(difference < 0.018, `${fps} Hz ${name} diverged ${difference} radians at segment ${index}`);
+      }
+    }
+  }
 });

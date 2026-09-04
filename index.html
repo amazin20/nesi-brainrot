@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#111c23" />
-    <meta name="description" content="NESI / Transfer Lab — три пространственные головоломки от третьего лица. Связывай переходы, переноси брейнрота и открывай камеры лаборатории." />
+    <meta name="theme-color" content="#12272d" />
+    <meta name="description" content="NESI / Transfer Lab — спокойная 3D-головоломка. Проведи одного друга через три связанные комнаты: исследуй порталы, мосты и подъёмник." />
     <title>NESI / Transfer Lab — 3D-игра от третьего лица</title>
   </head>
   <body>
@@ -12,7 +12,7 @@
     <section id="loading" class="screen screen--active" aria-live="polite" aria-labelledby="loading-title">
       <div class="loading-card">
         <span class="brand">NESI <i></i> TRANSFER LAB</span>
-        <h1 id="loading-title">Подготовка<br />испытания<span>.</span></h1>
+        <h1 id="loading-title">Скоро<br />отправляемся<span>.</span></h1>
         <p class="muted">Собираем лабораторию и загружаем модели.</p>
         <div id="loading-progress" class="progress-track" role="progressbar" aria-label="Загрузка моделей" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="loading-bar"></div></div>
         <div class="loading-row"><span id="loading-label">Подготовка сцены</span><strong id="loading-percent">0%</strong></div>
@@ -20,40 +20,36 @@
     </section>
     <section id="start-screen" class="screen start-screen" aria-labelledby="game-title" aria-hidden="true">
       <div class="hero-panel">
-        <span class="brand">NESI <i></i> EXPERIMENT 001</span>
+        <span class="brand">NESI <i></i> МАЛЕНЬКОЕ ПУТЕШЕСТВИЕ</span>
         <h1 id="game-title">TRANSFER<br /><span>LAB</span></h1>
-        <div class="hero-meta"><span>3 камеры</span><span>Третье лицо</span><span>3D-головоломка</span></div>
-        <p class="lead">Пространство — часть решения. Соединяй проходы, переноси брейнрота через препятствия и открывай путь дальше.</p>
-        <button id="play-button" class="primary-button">Начать испытание <span aria-hidden="true">↗</span></button>
+        <div class="hero-meta"><span>3 связанные комнаты</span><span>Один друг</span><span>Можно не спешить</span></div>
+        <p class="lead">Проведи одного друга через всю лабораторию. Порталы открывают путь тебе, а брейнроту помогай перебираться по мостам и на подъёмнике.</p>
+        <button id="play-button" class="primary-button">Отправиться вместе <span aria-hidden="true">↗</span></button>
         <div class="control-grid" aria-label="Управление">
           <span><kbd>WASD</kbd> движение</span><span><kbd>Мышь</kbd> камера</span>
           <span><kbd class="blue">ЛКМ</kbd> синий проход</span><span><kbd class="amber">ПКМ</kbd> янтарный проход</span>
-          <span><kbd>E</kbd> взять / поставить куб</span><span><kbd>Q</kbd> готовая пара</span>
+          <span><kbd>E</kbd> друг / терминал</span><span><kbd>V</kbd> помахать рукой</span>
           <span><kbd>Space</kbd> прыжок</span><span><kbd>Shift</kbd> бег</span>
           <span><kbd>F</kbd> удерживать прицел</span>
         </div>
         <p class="mobile-note">Слева — движение. Проведи по правой стороне экрана, чтобы повернуть камеру.</p>
-        <div class="hero-footer"><a href="./gallery.html">Все модели <span aria-hidden="true">↗</span></a><span class="desktop-note">Esc — пауза · R — заново</span></div>
+        <div class="hero-footer"><a href="./gallery.html">Галерея моделей <span aria-hidden="true">↗</span></a><span class="desktop-note">Esc — пауза · R — заново</span></div>
       </div>
-      <div class="start-caption" aria-hidden="true"><span class="caption-line"></span>ПРОСТРАНСТВО / ПЕРЕНОС / СВЯЗЬ</div>
+      <div class="start-caption" aria-hidden="true"><span class="caption-line"></span>ИССЛЕДУЙ. ПРОБУЙ. ПОМОГАЙ ДРУГУ.</div>
     </section>
     <header id="hud" class="hud" aria-hidden="true" inert>
       <div class="objective-card">
         <span id="chamber" class="eyebrow">01 / ПРОСТРАНСТВО</span>
-        <p id="objective">Соедини белые панели по обе стороны провала.</p>
-        <div class="status-row"><span id="cargo-status">Найди куб</span><span id="portal-status">Создай пару переходов</span></div>
-        <div class="mini-progress" aria-hidden="true"><div id="progress-bar"></div></div>
+        <div class="status-row"><span id="cargo-status">Друг ждёт тебя</span><span id="portal-status">Нужна пара порталов</span></div>
       </div>
       <div class="hud-right">
-        <div class="run-info"><span class="hud-brand">NESI / LAB</span><time id="timer">00:00</time></div>
-        <div class="chamber-steps" aria-label="Камеры"><span class="chamber-step chamber-step--current" aria-current="step">01</span><span class="chamber-step">02</span><span class="chamber-step">03</span></div>
         <button id="pause-button" class="icon-button" aria-label="Приостановить игру">Ⅱ</button>
       </div>
     </header>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <section id="pause-screen" class="screen modal-screen" aria-labelledby="pause-title" aria-hidden="true">
       <div class="modal-card">
-        <span class="eyebrow">ИСПЫТАНИЕ ПРИОСТАНОВЛЕНО</span>
+        <span class="eyebrow">МОЖНО ПЕРЕДОХНУТЬ</span>
         <h2 id="pause-title">Пауза<span>.</span></h2>
         <p class="muted">Продолжим с того же места.</p>
         <button id="resume-button" class="primary-button">Продолжить <span aria-hidden="true">→</span></button>
@@ -63,11 +59,10 @@
     </section>
     <section id="win-screen" class="screen modal-screen" aria-labelledby="win-title" aria-hidden="true">
       <div class="modal-card win-card">
-        <span class="eyebrow">03 / 03 — ИСПЫТАНИЕ ЗАВЕРШЕНО</span>
-        <h2 id="win-title">Связь<br />установлена<span>.</span></h2>
-        <p class="muted">Все три камеры пройдены. Брейнрот доставлен.</p>
-        <div class="result-row"><span>Время прохождения</span><strong id="result-time">00:00.000</strong></div>
-        <button id="play-again-button" class="primary-button">Пройти ещё раз <span aria-hidden="true">↻</span></button>
+        <span class="eyebrow">ДРУГ ТОЖЕ ДОБРАЛСЯ</span>
+        <h2 id="win-title">Вместе<br />получилось<span>.</span></h2>
+        <p class="muted">Вы прошли всю лабораторию, и брейнрот с тобой у выхода. Ещё одна прогулка?</p>
+        <button id="play-again-button" class="primary-button">Погулять ещё <span aria-hidden="true">↻</span></button>
         <a class="text-link" href="./gallery.html">Все модели лаборатории ↗</a>
       </div>
     </section>
