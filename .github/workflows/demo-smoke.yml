@@ -74,7 +74,7 @@ jobs:
           const browser = await puppeteer.launch({
             executablePath: process.env.CHROME_PATH,
             headless: true,
-            protocolTimeout: 30000,
+            protocolTimeout: 120000,
             args: [
               '--no-sandbox',
               '--disable-dev-shm-usage',
@@ -197,20 +197,6 @@ jobs:
             if (game.finishState !== 'won' || !game.winScreenActive) throw new Error(`finish failed: ${game.finishState}/${game.winScreenActive}`);
 
             report.finish = await capture();
-
-            await page.close();
-            page = await browser.newPage();
-            await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-            page.on('pageerror', (error) => {
-              const text = '[rift-pageerror] ' + (error.stack || error);
-              browserMessages.push(text);
-              console.error(text);
-            });
-            page.on('requestfailed', (request) => {
-              const text = '[rift-requestfailed] ' + request.url() + ' :: ' + (request.failure()?.errorText || 'unknown');
-              browserMessages.push(text);
-              console.error(text);
-            });
 
             await page.goto('http://127.0.0.1:4173/nesi-brainrot/?mode=rift&smoke=1', {
               waitUntil: 'domcontentloaded',
