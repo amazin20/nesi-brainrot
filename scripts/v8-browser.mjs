@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer-core';
+import {CAMPAIGN} from '../src/game/LabCampaignLevels.js';
 const root='http://127.0.0.1:4173/',out='smoke-artifacts';fs.mkdirSync(out,{recursive:true});
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'/usr/bin/google-chrome',headless:true,
  args:['--no-sandbox','--disable-dev-shm-usage','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
@@ -11,16 +12,17 @@ const ready=()=>page.waitForFunction(()=>window.__NESI_DEMO_GAME__?.state==='rea
 const shot=name=>page.screenshot({path:`${out}/${name}.png`});
 try{
  await page.goto(root+'?debug=1',{waitUntil:'networkidle2'});await ready();
- assert.equal(await page.$$eval('#level-select option',a=>a.length),5);assert.equal(requests.length,4);
+ assert.equal(await page.$$eval('#level-select option',a=>a.length),CAMPAIGN.length);assert.equal(requests.length,4);
  await shot('menu');await page.click('#play-button');await page.waitForFunction(()=>window.__NESI_DEMO_GAME__.state==='playing');
  await page.waitForFunction(()=>window.__NESI_DEMO_GAME__.performanceMonitor.stats.fps>0);await shot('level-1-start');
  report.initial=await page.evaluate(()=>({models:window.__NESI_DEMO_GAME__.assets.size,fps:document.querySelector('.lab-fps').textContent,
   oldHudHidden:getComputedStyle(document.querySelector('#hud')).display==='none',audioState:window.__NESI_DEMO_GAME__.audio.context?.state}));
  assert.equal(report.initial.models,4);assert.ok(report.initial.oldHudHidden);assert.equal(report.initial.audioState,'running');
- for(let index=0;index<5;index++){
+ for(let index=0;index<CAMPAIGN.length;index++){
    if(index>0){await page.click('#play-again-button');await page.waitForFunction(i=>window.__NESI_DEMO_GAME__?.levelIndex===i&&window.__NESI_DEMO_GAME__.state==='playing',{},index);await shot(`level-${index+1}-start`);}
    const result=await page.evaluate(()=>window.__NESI_RUN_LEVEL_ROUTE__());report.routes.push(result);assert.ok(result.pass&&result.resets===0&&result.respawns===0);
-   await shot(`level-${index+1}-complete`);
+   assert.equal(await page.$eval('#level-number',e=>e.textContent),`УРОВЕНЬ ${String(index+1).padStart(2,'0')}`);
+   assert.equal(await page.$('#quick-hint'),null);await shot(`level-${index+1}-complete`);
    // Art-only overview: camera changes are explicitly not passage evidence.
    await page.evaluate(()=>{const g=window.__NESI_DEMO_GAME__,l=g.firstLevel;g.cameraRig.restoreProjection?.();g.camera.updateProjectionMatrix();
      document.querySelector('#win-screen').style.visibility='hidden';
@@ -55,5 +57,5 @@ try{
  await page.setViewport({width:390,height:844,isMobile:true,hasTouch:true,deviceScaleFactor:1});await page.reload({waitUntil:'networkidle2'});await ready();
  await page.click('#play-button');await page.evaluate(()=>document.exitPointerLock?.());await page.waitForFunction(()=>!document.pointerLockElement);if(await page.evaluate(()=>window.__NESI_DEMO_GAME__.state==='playing'))await page.click('#quick-settings');await shot('mobile-settings');assert.equal(await page.$eval('#settings-level-select',e=>!!e.getBoundingClientRect().width),true);
  assert.deepEqual(errors,[]);
- fs.writeFileSync(`${out}/report.json`,JSON.stringify(report,null,2));console.log('V8 WebGL: five actual routes, lazy assets, menus, sound and persistence passed.');
+ fs.writeFileSync(`${out}/report.json`,JSON.stringify(report,null,2));console.log('Campaign WebGL: all active routes, lazy assets, menus, sound and persistence passed.');
 }finally{fs.writeFileSync(`${out}/report.json`,JSON.stringify(report,null,2));await browser.close();}

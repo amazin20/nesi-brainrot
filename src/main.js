@@ -22,7 +22,7 @@ function diagnostics(){const d=game.diagnostics();Object.assign(document.documen
   if(debug)window.__NESI_DEMO_DIAGNOSTICS__={...d,settings:preferences.value,adBusy:platform?.busy};return d;}
 function failure(error){console.error(error);game.renderer?.setAnimationLoop(null);game.state='error';setState('error');hideScreens();$('#error-detail').textContent=error?.message||String(error);screen('error-screen',true);}
 function choices(){for(const selector of ['#level-select','#settings-level-select']){const e=$(selector),old=e.value;e.replaceChildren();CAMPAIGN.forEach((l,i)=>{const option=document.createElement('option');option.value=i;option.textContent=`${String(i+1).padStart(2,'0')} · ${l.title}${preferences.value.completed.includes(i)?' ✓':''}`;e.append(option);});e.value=old||String(game.levelIndex);}}
-function pauseInfo(){ $('#settings-level-select').value=String(game.levelIndex);$('#pause-course').textContent=`${game.levelIndex+1} / 5 · ${CAMPAIGN[game.levelIndex].title}`;$('#hint-detail').hidden=true;}
+function pauseInfo(){ $('#settings-level-select').value=String(game.levelIndex);$('#pause-course').textContent=`${game.levelIndex+1} / ${CAMPAIGN.length} · ${CAMPAIGN[game.levelIndex].title}`;$('#hint-detail').hidden=true;}
 function showHints(){
   const count=preferences.value.hints[game.levelIndex]||0;$('#hint-detail').hidden=false;$('#hint-text').replaceChildren();
   CAMPAIGN[game.levelIndex].hints.slice(0,count).forEach((text,i)=>{const p=document.createElement('p');p.textContent=`${i+1}. ${text}`;$('#hint-text').append(p);});
@@ -39,13 +39,13 @@ const game=new LabGame({container:$('#game'),touch:{joystick:$('#joystick'),joys
       window.__NESI_RUN_LEVEL_ROUTE__=async()=>{const {runV8Journey}=await import('./game/LabV8Journey.js');game.renderer.setAnimationLoop(null);hideScreens();setState('playing');
         try{return await runV8Journey(game,{onMilestone:()=>game.render()});}finally{game.render();clearInput();setState(game.state);diagnostics();}};}
     $('#play-button').focus({preventScroll:true});if(query.get('smoke')==='1')enterLevel(game.levelIndex,'initial');},
-  onHud:({chamber,objective,hasCargo,portalsReady})=>{$('#chamber').textContent=chamber;$('#objective').textContent=objective||'';$('#cargo-status').textContent=hasCargo?'Друг на руках':'Друг ждёт';$('#portal-status').textContent=portalsReady?'Связаны':'Два портала';},
+  onHud:({chamber,objective,hasCargo,portalsReady})=>{$('#level-number').textContent=`УРОВЕНЬ ${String(game.levelIndex+1).padStart(2,'0')}`;$('#chamber').textContent=chamber;$('#objective').textContent=objective||'';$('#cargo-status').textContent=hasCargo?'Друг на руках':'Друг ждёт';$('#portal-status').textContent=portalsReady?'Связаны':'Два портала';},
   onToast:message=>{if(/Сначала|не помещается|препятствие|белую|Раздвинь|свободное|лицевую/.test(message))game.tutorial.explain(message);},
   onPause:paused=>{clearInput();screen('pause-screen',paused);setState(paused?'paused':'playing');if(paused){pauseInfo();$('#resume-button').focus({preventScroll:true});}},
   onRestartRequest:()=>restartLevel(),
   onWin:()=>{preferences.complete(game.levelIndex);choices();clearInput();setState('won');screen('win-screen',true);
     const last=game.levelIndex===CAMPAIGN.length-1;$('#play-again-button').textContent=last?'К первому испытанию ↻':'Следующий уровень →';
-    $('#win-screen .muted').textContent=last?'Пять первых испытаний завершены. Друг добрался вместе с тобой.':'Получилось! Следующее испытание добавит новую идею.';diagnostics();},
+    $('#win-screen .muted').textContent=last?'Все доступные испытания завершены. Друг добрался вместе с тобой.':'Получилось! Следующее испытание добавит новую идею.';diagnostics();},
 });
 game.quality={...QUALITY_PRESETS[preferences.value.quality]};game.tutorial.enabled=preferences.value.tutorial;
 const requested=Number(query.get('level')||1)-1;game.levelIndex=Number.isInteger(requested)&&CAMPAIGN[requested]?requested:0;
@@ -71,7 +71,7 @@ $('#play-button').addEventListener('click',()=>enterLevel(Number($('#level-selec
 $('#play-again-button').addEventListener('click',()=>enterLevel((game.levelIndex+1)%CAMPAIGN.length));
 $('#resume-button').addEventListener('click',resume);$('#restart-button').addEventListener('click',restartLevel);
 for(const id of ['pause-button','quick-settings'])$('#'+id).addEventListener('click',()=>game.togglePause(true));
-$('#quick-hint').addEventListener('click',()=>{game.togglePause(true);showHints();});$('#hint-button').addEventListener('click',showHints);
+$('#hint-button').addEventListener('click',showHints);
 $('#hint-unlock').addEventListener('click',async()=>{
   if(hintBusy||holds.size||(preferences.value.hints[game.levelIndex]||0)>=3)return;
   hintBusy=true;const index=game.levelIndex;showHints();

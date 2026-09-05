@@ -191,3 +191,6 @@ body[data-external-pause="true"] .play-tools,body[data-external-pause="true"] .l
 #hint-detail[hidden] {display:none;} #hint-detail p {margin:8px 0;}
 #hint-detail .muted {font-size:12px;} .secondary-button:disabled {opacity:.5;cursor:wait;}
 @media (pointer:coarse) {.play-tools {right:18px;top:45px;}.modal-card{max-height:calc(100dvh - 30px);}}
+
+/* The level readout is not a button. Hints remain in the Esc pause menu. */
+.level-number{align-self:center;padding:8px 12px;border-radius:8px;background:#152128d9;color:#e6eff1;font-size:13px;font-weight:700;letter-spacing:.09em;pointer-events:none;user-select:none;}

@@ -59,7 +59,7 @@ export function buildLabCampaignLevel(game,index) {
     const p={art,mechanism,collider,position:V(x,y+.2,z),floor:f,top:surface,progress:0,previousProgress:0,pressed:false,contact:0};pads.push(p);return p;
   }
   const weighted=p=>!!game.cargo&&!game.heldCube&&game.cargoOnPad(p.mechanism.getPortalFrame().center,1.15);
-  function doorway(z,pad,roomWidth=16,ceiling=6) {
+  function doorway(z,pad,roomWidth=16,ceiling=9) {
     const g=createArchitecturalGate(game,{z,roomWidth,roomHeight:ceiling,constructWalls:false});
     for(const s of [-1,1])for(const front of [-1,1])world.surface({name:'gate surround',position:[s*(roomWidth/4+1.2),ceiling/2,z+front*.25],normal:[0,0,front],width:roomWidth/2-2.4,height:ceiling});
     for(const front of [-1,1])world.surface({name:'gate lintel',position:[0,(3.65+ceiling)/2,z+front*.25],normal:[0,0,front],width:4.8,height:ceiling-3.65});
@@ -92,15 +92,15 @@ export function buildLabCampaignLevel(game,index) {
     world.surface({name:'corner baffle back',position:[-3,3,-4.22],normal:[0,0,-1],width:10,height:6});
     patch('receiver',[7.8,2.1,-9],[-1,0,0]);goal=world.goal([0,0,-12.5],[4.8,4.0]);
   } else if(index===2) {
-    bounds={minX:-7,maxX:7,minZ:-10,maxZ:14};spawn=[0,5,8];cargoSpawn=[1.2,5.55,6.5];
+    bounds={minX:-7,maxX:7,minZ:-16,maxZ:14};spawn=[0,5,8];cargoSpawn=[1.2,5.55,6.5];
     world.walls(bounds,10,-1);
     world.floor(-3,3,-2,14,0);world.floor(-3,3,2,14,5);
     // Recovery staircase climbs towards the balcony without reaching the exit island.
     for(let i=0;i<18;i++)world.floor(-6.5,-4,12-i*.5,12.5-i*.5,(i+1)*5/18);
     world.floor(-4,-3,3,4.5,5);world.floor(-6.5,-3,12.5,14,0);
     const input=patch('fall',[0,.018,0],[0,1,0],4,4);game.floors.push({minX:-2,maxX:2,minZ:-2,maxZ:2,y:.018,mesh:input.mesh,enabled:true});
-    patch('fling',[-6.8,4.2,-5],[1,0,0],4,4);
-    world.floor(.3,7,-8,-2.6,1);goal=world.goal([4.7,1,-5.2],[3.8,4]);
+    patch('fling',[-6.8,4.2,-11],[1,0,0],4,4);
+    world.floor(.3,7,-14,-8.6,1);goal=world.goal([4.7,1,-11.2],[3.8,4]);
   } else if(index===3) {
     bounds={minX:-6,maxX:6,minZ:-16,maxZ:15};spawn=[0,0,9.5];cargoSpawn=[-1.4,.55,8];
     world.walls(bounds,11,-3);world.floor(-6,6,2,15);world.floor(-6,6,-16,-8,5);
@@ -120,15 +120,15 @@ export function buildLabCampaignLevel(game,index) {
     terminal([3.5,0,6],()=>{lift.target=lift.target>0?0:5;game.audio?.mechanism?.('switch');});
     goal=world.goal([0,5,-12.5],[4.6,4]);
   } else {
-    bounds={minX:-11,maxX:8,minZ:-10,maxZ:14};spawn=[-6,5,-3];cargoSpawn=[-4.8,5.55,-2];
+    bounds={minX:-11,maxX:14,minZ:-10,maxZ:14};spawn=[-6,5,-3];cargoSpawn=[-4.8,5.55,-2];
     world.walls(bounds,11,-1);world.floor(-11,-3,-10,9,0);world.floor(-9,-3,-10,3,5);
     for(let i=0;i<18;i++)world.floor(-10.8,-9,5.5-i*.5,6-i*.5,(i+1)*5/18);
     world.floor(-10.8,-9,-3.5,-2.8,5);
     const input=patch('fall',[-6,.018,5],[0,1,0],4,4);game.floors.push({minX:-8,maxX:-4,minZ:3,maxZ:7,y:.018,mesh:input.mesh,enabled:true});
-    const art=prop('changes exit momentum direction',28,7.5,[3,0,-5],Math.PI);
+    const art=prop('changes exit momentum direction',28,7.5,[9,0,-5],Math.PI);
     const mechanism=new LabRotatingPanel(art,{angle:Math.PI*35/180});
     // Align the hinge's portal face with the desired launch origin.
-    art.position.add(V(3,4.2,-5).sub(mechanism.getPortalFrame().center));mechanism.update(0);
+    art.position.add(V(9,4.2,-5).sub(mechanism.getPortalFrame().center));mechanism.update(0);
     const fb=mechanism.getFrameBox(),pb=mechanism.getPanelBox();
     // The bearing frame sits on a physical foundation, never suspended in air.
     if(fb.min.y>0.01)world.box([(fb.min.x+fb.max.x)/2,fb.min.y/2,(fb.min.z+fb.max.z)/2],
@@ -145,7 +145,7 @@ export function buildLabCampaignLevel(game,index) {
     mechanism.frame.traverse(m=>{if(m.isMesh)game.aimBlockers.push(m);});
     receiverPanel={art,mechanism,collider,frameCollider,portalMeshes,progress:0,previousProgress:0,target:0};
     terminal([-7,5,-5],()=>{receiverPanel.target=receiverPanel.target?0:1;game.audio?.mechanism?.('switch');});
-    world.floor(-.2,7,4.5,13.8,3.5);goal=world.goal([3,3.5,9.7],[4.4,4.5]);
+    world.floor(5.8,13,4.5,13.8,3.5);goal=world.goal([9,3.5,9.7],[4.4,4.5]);
   }
   function update(dt) {
     time+=dt;

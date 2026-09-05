@@ -35,7 +35,9 @@ export async function runV8Journey(game,{onMilestone=()=>{}}={}) {
   function aim(index,point){
     stop();game.aimHeld=true;
     for(let n=0;n<240;n++){
-      game.scene.updateMatrixWorld(true);const ndc=point.clone().project(game.camera);
+      game.scene.updateMatrixWorld(true);
+      if(point.clone().sub(game.camera.position).dot(game.camera.getWorldDirection(V()))<0){game.yaw+=.18;frame();continue;}
+      const ndc=point.clone().project(game.camera);
       if(n>20&&Math.abs(ndc.x)<.01&&Math.abs(ndc.y)<.01)break;
       game.yaw-=THREE.MathUtils.clamp(ndc.x,-1,1)*.22;
       game.pitch=THREE.MathUtils.clamp(game.pitch+THREE.MathUtils.clamp(ndc.y,-1,1)*.19,-1.15,1.15);frame();
@@ -73,7 +75,7 @@ export async function runV8Journey(game,{onMilestone=()=>{}}={}) {
       const c=game.cargo.position;walk(c.x-1,c.z);pickup();walk(0,-12.5);
     }else if(index===2){
       walk(0,2.5);aim(0,level.panels.fall.getFrame().center);aim(1,level.panels.fling.getFrame().center);
-      walk(1.2,7.5);pickup();walk(0,5);fallFromEdge(2.35,-1);walk(4.7,-5.2);
+      walk(1.2,7.5);pickup();walk(0,5);fallFromEdge(2.35,-1);walk(4.7,-11.2);
     }else if(index===3){
       aim(0,level.panels.entry.getFrame().center);aim(1,level.panels.lift.getFrame().center);
       walk(3.5,7.3);game.interact();until(()=>level.lift.y>4.98,10,'Lift did not rise');mark('portal rises with its panel');
@@ -81,7 +83,8 @@ export async function runV8Journey(game,{onMilestone=()=>{}}={}) {
     }else{
       walk(-6,2.4);aim(0,level.panels.fall.getFrame().center);aim(1,level.receiverPanel.mechanism.getPortalFrame().center);
       walk(-6.7,-3.65);game.interact();until(()=>level.receiverPanel.progress>.99,5,'Panel did not tilt');mark('exit tilted upward');
-      walk(-4.8,-1);pickup();walk(-6,1);fallFromEdge(2.65,1);walk(3,9.7);
+      aim(1,level.receiverPanel.mechanism.getPortalFrame().center);
+      walk(-4.8,-1);pickup();walk(-6,1);fallFromEdge(2.65,1);walk(9,9.7);
     }
     until(()=>game.state==='won',3,'Goal did not complete');
     assert(game.heldCube||index===0,'Friend lost from hands');mark('both at exit');

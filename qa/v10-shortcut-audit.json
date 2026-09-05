@@ -1,0 +1,33 @@
+{
+  "baseline": false,
+  "scope": "Adversarial fixtures at reachable edges; normal production jump/collision/air control. Includes full sprint and an extra 0.9 m cargo-stack allowance. Not an exhaustive proof of all strategies.",
+  "attempts": 180,
+  "bypasses": [],
+  "levels": [
+    {
+      "level": 1,
+      "attempts": 36,
+      "bypasses": 0
+    },
+    {
+      "level": 2,
+      "attempts": 36,
+      "bypasses": 0
+    },
+    {
+      "level": 3,
+      "attempts": 36,
+      "bypasses": 0
+    },
+    {
+      "level": 4,
+      "attempts": 36,
+      "bypasses": 0
+    },
+    {
+      "level": 5,
+      "attempts": 36,
+      "bypasses": 0
+    }
+  ]
+}

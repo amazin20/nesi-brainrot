@@ -49,7 +49,7 @@ export class LabCompanionRig {
     this.mesh = mesh; this.phase = 0; this.walk = 0; this.alert = 0;
   }
   reset() {
-    this.phase = this.walk = this.alert = 0;
+    this.phase = this.walk = this.alert = this.flightBrace = 0;
     if (!this.mesh) return;
     Object.values(this.bones).forEach(b => b.quaternion.identity());
     this.mesh.updateWorldMatrix(true, true); this.skeleton.update();
@@ -61,12 +61,15 @@ export class LabCompanionRig {
     this.alert = THREE.MathUtils.damp(this.alert, tumbling ? 0 : carrying ? .5 : 1, 7, dt);
     this.phase += dt * (3 + Math.min(speed, .6) * 28);
     const wave = Math.sin(this.phase), t = elapsed;
+    // Carried high-speed flight: small fin/foot bracing, without moving the grip or body.
+    this.flightBrace=THREE.MathUtils.damp(this.flightBrace||0,carrying&&!grounded?THREE.MathUtils.clamp((speed-5)/9,0,1):0,9,dt);
     this.bones.Tail.rotation.z = (Math.sin(t * 3.1) * .07 + wave * .055 * this.walk) * this.alert;
     this.bones.Head.rotation.x = Math.sin(t * 1.2) * .022 * this.alert;
     this.bones.Head.rotation.y = Math.sin(t * 2.1) * .017 * this.alert;
+    this.bones.Tail.rotation.z+=Math.sin(t*4.2)*.025*this.flightBrace;
     for (const [side, sign] of [['L', -1], ['R', 1]]) {
-      this.bones[`Fin${side}`].rotation.x = sign * (Math.sin(t * 2.7) * .04 + wave * .07 * this.walk) * this.alert;
-      this.bones[`Foot${side}`].rotation.y = sign * wave * .12 * this.walk + (recovering ? sign * Math.sin(t * 8) * .055 : 0);
+      this.bones[`Fin${side}`].rotation.x = sign * (Math.sin(t * 2.7) * .04 + wave * .07 * this.walk) * this.alert + sign*.14*this.flightBrace;
+      this.bones[`Foot${side}`].rotation.y = sign * wave * .12 * this.walk + (recovering ? sign * Math.sin(t * 8) * .055 : 0)+sign*.045*this.flightBrace;
     }
     this.mesh.updateWorldMatrix(true, true); this.skeleton.update();
   }

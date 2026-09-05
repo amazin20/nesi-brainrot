@@ -715,6 +715,13 @@ export class LabGame {
   }
 
   interact() {
+    if (this.externalBlocked || this.state !== 'playing') return false;
+    // E puts down a held friend. Nearby controls must not steal pickup input.
+    if (this.heldCube) return this.toggleCube();
+    const hand = this.playerPosition.clone().addScaledVector(UP, 1.1);
+    const controlDistance = Math.min(Infinity, ...(this.firstLevel?.terminals ?? []).map(t => hand.distanceTo(t.position)));
+    if (this.cargo && hand.distanceTo(this.cargo.position) < Math.min(2.25, controlDistance)
+      && this.toggleCube()) return true;
     if (this.firstLevel?.interact()) return true;
     const terminal = this.nearbyTerminal();
     if (terminal) {

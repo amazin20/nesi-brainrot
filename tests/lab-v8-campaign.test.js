@@ -7,7 +7,7 @@ import {CAMPAIGN_ASSET_IDS} from '../src/game/labAssets.js';
 import {sampleLabFootCycle} from '../src/game/LabPlayerAnimator.js';
 const g=await createHeadlessGame();
 test('v8 five courses have distinct geometry, declared purposeful assets and readable portal surfaces',async()=>{
- assert.equal(CAMPAIGN.length,5);assert.equal(CAMPAIGN[0].assets.length,4);assert.deepEqual([...new Set(CAMPAIGN.flatMap(l=>l.assets))].sort((a,b)=>a-b),[...CAMPAIGN_ASSET_IDS]);
+ assert.ok(CAMPAIGN.length>=5);assert.equal(CAMPAIGN[0].assets.length,4);assert.deepEqual([...new Set(CAMPAIGN.flatMap(l=>l.assets))].sort((a,b)=>a-b),[...CAMPAIGN_ASSET_IDS]);
  const layouts=new Set();
  for(let i=0;i<5;i++){
   if(i!==g.levelIndex)await g.selectLevel(i,false);const l=g.firstLevel;
