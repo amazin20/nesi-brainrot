@@ -7,6 +7,21 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
 const yieldFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
 const cloneJSON = value => JSON.parse(JSON.stringify(value));
 
+/** Rotate only the same yaw/pitch controls a player has. The production
+ * shoulder camera, pitch limits and obstruction tests determine the actual ray. */
+export function aimEvidencePoint(game, point) {
+  for (let i=0; i<100; i++) {
+    const desired = point.clone().sub(game.camera.position).normalize();
+    const forward = game.camera.getWorldDirection(new THREE.Vector3());
+    const yawError = Math.atan2(-desired.x,-desired.z) - Math.atan2(-forward.x,-forward.z);
+    game.yaw += Math.atan2(Math.sin(yawError), Math.cos(yawError)) * .7;
+    game.pitch = THREE.MathUtils.clamp(game.pitch + (Math.asin(desired.y)-Math.asin(forward.y)) * .7, -1.15, 1.15);
+    game.cameraRig.update({ dt:.1, target:game.playerPosition, yaw:game.yaw, pitch:game.pitch, velocity:new THREE.Vector3(), aiming:false });
+  }
+  const error = game.camera.getWorldDirection(new THREE.Vector3()).angleTo(point.clone().sub(game.camera.position));
+  assert(error < .004, `Point cannot be aimed with production camera: ${point.toArray()}, error=${error}`);
+}
+
 /** Query-only production test driver. Fixtures are explicit; a route never replaces cargo. */
 export function createEvidenceDriver(game) {
   const key = (code, down = true) => down ? game.input.keys.add(code) : game.input.keys.delete(code);
@@ -39,14 +54,16 @@ export function createEvidenceDriver(game) {
     assert(reached, `Route blocked toward ${x},${z}; player=${game.playerPosition.toArray()}; cargo=${game.cargo.position.toArray()}`);
   };
   const aimPanel = (index, stage, side = index, offset = new THREE.Vector3()) => {
-    const panel = game.portalPanels.filter(p => p.userData.stage === stage)[side];
+    const targets = [[[1, 15], [1, 1.2]], [[-1, -9], [-1, -21]], [[1, -30], [-1, -43]]];
+    const [normal, z] = targets[stage][side];
+    const panel = game.portalPanels.filter(p => p.userData.stage === stage && Math.sign(p.userData.normal.x) === normal)
+      .sort((a,b) => Math.abs(a.userData.center.z-z)-Math.abs(b.userData.center.z-z))[0];
     assert(panel, `Missing panel ${stage}/${side}`);
-    game.camera.position.copy(game.playerPosition).add(new THREE.Vector3(0, 1.65, 0));
-    game.camera.lookAt(panel.userData.center.clone().add(offset)); game.camera.updateMatrixWorld(true);
+    aimEvidencePoint(game, new THREE.Vector3(panel.userData.center.x, 1.9, z).add(offset));
     assert(game.placePortal(index), `Ray-aimed portal ${stage}/${index} was rejected`);
     return panel;
   };
-  const reset = () => { game.resetRun(true); game.renderer.setAnimationLoop(null); step(.7); };
+  const reset = () => { game.resetRun(true); game.renderer?.setAnimationLoop(null); step(.7); };
   return { key, step, fixturePlayer, pressE, goto, aimPanel, reset };
 }
 
@@ -95,14 +112,28 @@ export function createEvidenceFrameStepper(game) {
   };
 }
 
+export function fireReelPortal(game, driver, index, stage = 0) {
+  const position = game.camera.position.clone(), quaternion = game.camera.quaternion.clone();
+  try {
+    // Aim a real gameplay shot, then restore the review camera before this
+    // frame is rendered. A cinematic viewpoint is not an aiming direction.
+    const panel = driver.aimPanel(index, stage);
+    return { index, placed: true, panel: panel.uuid, position: game.portals.portals[index].position.toArray() };
+  } finally {
+    game.camera.position.copy(position); game.camera.quaternion.copy(quaternion); game.camera.updateMatrixWorld(true);
+  }
+}
+
 export function createReel(game, driver) {
   driver.reset(); driver.fixturePlayer(0, 0, 17);
   game.physics.resetCargo({ position: [0, .43, 15.9] }); driver.step(.8);
   const frameStep = createEvidenceFrameStepper(game);
+  const shots = [];
   let previousTime = -1;
   const at = (time, event) => { if (previousTime < time && currentTime >= time) event(); };
   let currentTime = 0;
   return {
+    get diagnostics() { return { shots: shots.map(shot => ({ ...shot, position: [...shot.position] })) }; },
     advance(dt, time) {
       currentTime = time;
       game.input.keys.clear();
@@ -113,8 +144,8 @@ export function createReel(game, driver) {
       if (time >= 3.05 && time < 4.05) {
         game.yaw = -Math.PI / 2; game.input.keys.add('KeyW'); game.input.keys.add('ShiftLeft');
       }
-      at(4.45, () => game.placePortal(0));
-      at(4.85, () => game.placePortal(1));
+      at(4.45, () => shots.push({ time, ...fireReelPortal(game, driver, 0) }));
+      at(4.85, () => shots.push({ time, ...fireReelPortal(game, driver, 1) }));
       at(5.4, () => { game.input.jumpQueued = true; });
       at(7.2, () => { game.animator.trigger('celebrate'); game.companionAnimator.trigger('celebrate'); });
       at(8.9, () => game.animator.trigger('curious'));
@@ -133,59 +164,93 @@ export function createReel(game, driver) {
 }
 
 export function runContinuousJourney(g, s) {
-    g.resetRun(true); s.step(.7);
-    const cargo = g.cargo, body = g.physics.cargoBody, resetCargo = g.physics.resetCargo;
-    const identity = cargo.group.uuid;
-    const routeLog = [];
-    g.physics.resetCargo = () => { throw new Error('Cargo reset during continuous journey'); };
-    const mark = name => {
-      if (g.cargo !== cargo || g.physics.cargoBody !== body || g.cubes.length !== 1 || !cargo.group.visible) throw new Error('Cargo identity/visibility changed');
-      routeLog.push({ name, player: g.playerPosition.toArray(), cargo: cargo.position.toArray(), held: Boolean(g.heldCube), stage: g.stage,
-        doors: g.doors.map(d => d.opened), bridges: g.mechanisms.bridges.map(b => b.active), barrier: g.mechanisms.barrier.opened, lift: g.mechanisms.lift.y });
-    };
-    const pickup = () => { s.pressE(); s.step(1); if (g.heldCube !== cargo) throw new Error('Journey pickup failed at ' + g.playerPosition.toArray() + ' cargo ' + cargo.position.toArray()); };
-    const releaseOnPad = (x, y, z, activated) => {
-      s.goto(x, z + 2); s.goto(x, z + .85); s.step(.9);
-      s.pressE(); s.step(2.6);
-      if (!activated()) throw new Error('Pad did not activate at ' + [x, y, z] + '; cargo=' + cargo.position.toArray() + '; speed=' + cargo.velocity.length());
-      pickup();
-    };
-    try {
-      s.goto(-9.8, 15); s.aimPanel(0, 0); s.aimPanel(1, 0); s.step(1.2); g.yaw = 0;
-      s.key('KeyA', true);
-      for (let i = 0; i < 100 && g.teleportCount === 0; i++) s.step(1 / 60);
-      s.key('KeyA', false); s.step(.3);
-      if (g.teleportCount !== 1) throw new Error('Opening portal crossing failed');
-      s.goto(-5, 2.7); s.pressE(); s.step(4);
-      if (!g.mechanisms.bridges[0].active) throw new Error('First bridge terminal failed');
-      mark('first bridge activated by player');
-      s.goto(0, 3); s.goto(0, 13); s.goto(4.6, 16.3); pickup();
-      s.goto(0, 13); s.goto(0, 3);
-      releaseOnPad(4.6, 0, 0, () => g.doors[0].opened); mark('first latch opened, cargo retrieved');
-      s.goto(0, .7); s.goto(0, -6); mark('first doorway crossed together');
-      releaseOnPad(-4, 0, -10, () => g.mechanisms.barrier.opened); mark('workshop field latched');
-      s.goto(0, -12); s.goto(0, -16.3); s.goto(-6, -16.3); s.goto(-6, -18.45);
-      s.step(4.8);
-      if (g.playerPosition.y < 2.05 || g.mechanisms.lift.y < 2.1 || g.heldCube !== cargo) throw new Error('Loaded lift did not carry both');
-      mark('lift raised both to ledge');
-      s.goto(-6, -21); releaseOnPad(-5, 2.2, -23, () => g.doors[1].opened);
-      s.goto(-2.2, -23.5); s.step(.8); s.goto(0, -24); s.goto(0, -28.5); mark('second doorway crossed together');
-      s.goto(3, -30); s.step(.8); s.pressE(); s.step(1.4);
-      s.goto(0, -30.15); g.yaw = 0;
-      s.key('KeyW', true);
-      for (let i = 0; i < 220 && g.playerPosition.z > -41; i++) s.step(1 / 60);
-      s.key('KeyW', false); s.step(.6);
-      if (g.playerPosition.z > -40 || g.playerPosition.y < -.2) throw new Error('Player launch did not reach far bank');
-      s.goto(4, -41.3); s.pressE(); s.step(4);
-      if (!g.mechanisms.bridges[1].active) throw new Error('Last bridge terminal failed');
-      mark('last bridge activated; cargo waited');
-      s.goto(0, -41.4); s.goto(0, -33); s.goto(3, -33); s.goto(cargo.position.x, cargo.position.z - 1.15); pickup();
-      s.goto(3, -33); s.goto(0, -33); s.goto(0, -42);
-      releaseOnPad(0, 0, -44, () => g.doors[2].opened); mark('final latch opened, cargo retrieved');
-      s.goto(0, -49); s.step(.5); mark('together at exit');
-      if (g.state !== 'won') throw new Error('Exit did not require and accept both companions');
-      return { identity, bodyId: body.id, cargoResets: 0, completed: true, state: g.state, milestones: routeLog };
-    } finally { g.physics.resetCargo = resetCargo; }
+  g.resetRun(true); s.step(.7);
+  const cargo = g.cargo, body = g.physics.cargoBody, resetCargo = g.physics.resetCargo;
+  const identity = cargo.group.uuid, routeLog = [];
+  g.physics.resetCargo = () => { throw new Error('Cargo reset during continuous journey'); };
+  const mark = name => {
+    assert(g.cargo === cargo && g.physics.cargoBody === body && g.cubes.length === 1 && cargo.group.visible, 'Companion identity changed');
+    if (typeof window === 'undefined') console.log('Journey:', name);
+    routeLog.push({ name, player: g.playerPosition.toArray(), cargo: cargo.position.toArray(), held: Boolean(g.heldCube),
+      stage: g.stage, doors: g.doors.map(d => d.opened), barrier: g.mechanisms.barrier.opened });
+  };
+  const shoot = (index, panel, point) => {
+    assert(!g.heldCube, 'Cannot shoot while holding a companion');
+    aimEvidencePoint(g, point);
+    assert(g.placePortal(index), `Real shot rejected: ${index} at ${point.toArray()}`);
+    assert(g.portalSurfaceIds[index] === panel.uuid, 'A different surface intercepted the shot');
+  };
+  const wall = (index, stage, side, z) => {
+    const panels = g.portalPanels.filter(p => p.userData.stage === stage && Math.sign(p.userData.normal.x) === side);
+    const panel = panels.sort((a,b) => Math.abs(a.userData.center.z-z)-Math.abs(b.userData.center.z-z))[0];
+    assert(panel, 'Wall panel missing');
+    shoot(index, panel, new THREE.Vector3(panel.userData.center.x, 1.9, z));
+  };
+  const pickup = () => {
+    s.pressE(); s.step(.8);
+    assert(g.heldCube === cargo, `Cannot pick up at ${g.playerPosition.toArray()}, companion ${cargo.position.toArray()}`);
+  };
+  const releaseOnPad = (pad, opened) => {
+    const p = pad.position;
+    s.goto(p.x, p.z + 2.4); s.goto(p.x, p.z + .85); s.step(.7);
+    s.pressE(); s.step(1.4);
+    assert(opened(), `Pressure plate did not activate: ${p.toArray()}, cargo ${cargo.position.toArray()}`);
+  };
+  const retrieve = (pad, stage, side, z, aimOffset = 0, prepared = false) => {
+    const before = g.physics.portalTransports;
+    wall(1, stage, side, z);
+    if (!prepared) shoot(0, pad.top, pad.top.position.clone().add(new THREE.Vector3(aimOffset, 0, .3)));
+    s.step(1.1);
+    assert(g.physics.portalTransports > before, 'Loose companion did not leave the pressure plate through its portal');
+    mark('companion retrieved through pressure plate');
+    if (g.state !== 'won') {
+      s.goto(cargo.position.x - side * 1.15, cargo.position.z);
+      if (g.state !== 'won') pickup();
+    }
+  };
+  try {
+    // Two real wall shots open an optional route across the first gap.
+    wall(0, 0, -1, 15); wall(1, 0, -1, 1.2);
+    s.goto(cargo.position.x, cargo.position.z + 1.1); pickup();
+    s.goto(0, 19.2); s.goto(10.3, 19.2); s.goto(10.3, 15); g.yaw = -Math.PI / 2; s.key('KeyW');
+    for (let i = 0; i < 160 && !g.teleportCount; i++) s.step(1/60);
+    s.key('KeyW', false); s.step(.5);
+    assert(g.teleportCount === 1 && g.heldCube === cargo, 'First paired traversal failed'); mark('both crossed the first gap');
+    s.goto(-5, 2.7); s.pressE(); s.step(4);
+    assert(g.mechanisms.bridges[0].active, 'Bridge terminal did not activate');
+    releaseOnPad(g.doors[0].pad, () => g.doors[0].opened);
+    s.goto(0, 1); s.goto(0, -5);
+    retrieve(g.doors[0].pad, 1, 1, -7, -1.2);
+    assert(!g.doors[0].opened, 'First door stayed latched after retrieval'); mark('first door released its weight circuit');
+
+    releaseOnPad(g.mechanisms.chargePad, () => g.mechanisms.barrier.opened);
+    s.goto(0, -12); s.goto(0, -16.1);
+    retrieve(g.mechanisms.chargePad, 1, -1, -19.5, 1);
+    assert(!g.mechanisms.barrier.opened, 'Energy barrier stayed latched'); mark('barrier closed after retrieval');
+    s.goto(0, -16.3); s.goto(-6, -16.3); s.goto(-6, -18.45); s.step(4.8);
+    assert(g.playerPosition.y > 2.05 && g.heldCube === cargo, 'Lift did not carry both'); mark('lift carried both');
+    s.goto(-6, -21); g.clearPortals();
+    releaseOnPad(g.doors[1].pad, () => g.doors[1].opened);
+    shoot(0, g.doors[1].pad.top, g.doors[1].pad.top.position);
+    s.step(.5); assert(g.doors[1].opened && !g.portals.ready, 'Unpaired pad portal must preserve weight');
+    s.goto(-2.2, -23.5); s.step(.8); s.goto(0, -24); s.goto(0, -26.9);
+    retrieve(g.doors[1].pad, 2, 1, -30.5, 0, true);
+    assert(!g.doors[1].opened, 'Second door stayed latched');
+
+    s.goto(-3, -29); s.goto(0, -30.1); g.yaw = 0; s.key('KeyW');
+    for (let i = 0; i < 220 && g.playerPosition.z > -41; i++) s.step(1/60);
+    s.key('KeyW', false); s.step(.7);
+    assert(g.playerPosition.z < -40 && g.playerPosition.y > -.2 && g.heldCube === cargo, 'Loaded launch did not clear the gap');
+    mark('both crossed the second gap on the launch pad');
+    s.goto(4, -41.3); s.pressE(); s.step(4);
+    assert(g.mechanisms.bridges[1].active, 'Return bridge did not activate');
+    releaseOnPad(g.doors[2].pad, () => g.doors[2].opened);
+    s.goto(0, -47.8); retrieve(g.doors[2].pad, 2, 1, -49);
+    if (g.state !== 'won') s.goto(cargo.position.x, -49);
+    s.step(.4); mark('both arrived at the exit');
+    assert(g.state === 'won', 'Exit did not accept both companions');
+    return { identity, bodyId: body.id, cargoResets: 0, completed: true, state: g.state, milestones: routeLog };
+  } finally { g.physics.resetCargo = resetCargo; }
 }
 
 export function jumpOntoTable(game, driver) {
@@ -292,7 +357,7 @@ async function runChecks(game, driver, progress) {
     driver.reset();
     const door = game.doors[0], before = door.art.position.clone();
     const beforeBox = new THREE.Box3().setFromObject(door.art);
-    door.opened = true; driver.step(2.2);
+    game.physics.resetCargo({ position: door.pad.position.clone().add(new THREE.Vector3(0, .6, 0)) }); driver.step(2.2);
     const afterBox = new THREE.Box3().setFromObject(door.art);
     assert(door.art.position.distanceTo(before) < 1e-6, 'Entire door frame still moves instead of opening');
     assert(door.progress > .95, 'Door opening did not complete');
@@ -300,7 +365,7 @@ async function runChecks(game, driver, progress) {
   });
   await check('barrier-frame-fixed', () => {
     driver.reset(); const barrier = game.mechanisms.barrier, before = barrier.art.position.clone();
-    barrier.opened = true; driver.step(2.2);
+    game.physics.resetCargo({ position: game.mechanisms.chargePad.position.clone().add(new THREE.Vector3(0, .6, 0)) }); driver.step(2.2);
     assert(barrier.art.position.distanceTo(before) < 1e-6 && barrier.progress > .95, 'Energy barrier posts must stay fixed while the field fades');
     assert(barrier.collider.enabled === false, 'An opened energy field must allow movement');
     return { rootTravel: barrier.art.position.distanceTo(before), progress: barrier.progress, collision: barrier.collider.enabled };
@@ -322,7 +387,7 @@ export function mountLabEvidence(game) {
   const status = panel.querySelector('#evidence-status'), actions = panel.querySelector('#evidence-actions'), downloads = panel.querySelector('#evidence-downloads'), reportEl = panel.querySelector('#evidence-report');
   const state = { busy: false, playing: false, raf: 0, urls: [], elapsed: 0, report: null };
   const say = text => { status.textContent = text; };
-  const stop = () => { cancelAnimationFrame(state.raf); state.playing = false; game.renderer.setAnimationLoop(null); game.input.keys.clear(); };
+  const stop = () => { cancelAnimationFrame(state.raf); state.playing = false; game.renderer?.setAnimationLoop(null); game.input.keys.clear(); };
   const render = () => { game.render(); };
   const prepareReview = () => {
     for (const screen of document.querySelectorAll('.screen')) {
@@ -379,7 +444,8 @@ export function mountLabEvidence(game) {
   const mechanismPose = (kind, opened) => {
     stop(); prepareReview(); driver.reset();
     const mechanism = kind === 'door' ? game.doors[0] : game.mechanisms.barrier;
-    mechanism.opened = opened; driver.step(2.3);
+    if (opened) { const pad = kind === 'door' ? mechanism.pad : game.mechanisms.chargePad; game.physics.resetCargo({ position: pad.position.clone().add(new THREE.Vector3(0, .6, 0)) }); }
+    driver.step(2.3);
     const z = kind === 'door' ? game.doors[0].z : game.mechanisms.barrier.mesh.position.z;
     game.camera.position.set(0, 2.5, z + 7.2); game.camera.lookAt(0, 2.5, z); game.camera.updateMatrixWorld(true); render();
     const preview = panel.querySelector('#evidence-preview'); preview.src = game.renderer.domElement.toDataURL('image/png'); preview.style.display = 'block';
@@ -407,6 +473,53 @@ export function mountLabEvidence(game) {
     game.renderer.setPixelRatio(1); game.renderer.setSize(960, 720, false); game.camera.aspect = 4 / 3; game.camera.updateProjectionMatrix();
     return () => { game.renderer.setPixelRatio(ratio); game.renderer.setSize(size.x, size.y, false); game.camera.aspect = size.x / size.y; game.camera.updateProjectionMatrix(); };
   };
+  // CI consumes one completed frame per call. A stalled renderer cannot hold
+  // a single protocol request for the complete ten-second production reel.
+  let frameCapture = null;
+  const beginFrameCapture = () => {
+    assert(!frameCapture, 'A frame export is already running');
+    stop(); prepareReview(); state.busy = true; panel.dataset.status = 'recording-frames';
+    const restore = videoSize();
+    try {
+      const reel = createReel(game, driver);
+      frameCapture = { restore, reel, canvas: makeFrameCanvas(), frame: 0, states: new Set(), started: performance.now(),
+        before: { animation: game.animationFrames, physics: game.physics.steps }, timings: { render: 0, readback: 0, encode: 0 } };
+    } catch (error) { restore(); state.busy = false; throw error; }
+    return { frames: FRAME_COUNT, fps: FPS, width: 960, height: 720 };
+  };
+  const nextFrameCapture = ({ png = true } = {}) => {
+    const capture = frameCapture;
+    assert(capture && capture.frame < FRAME_COUNT, 'No unfinished frame export');
+    const index = capture.frame, start = performance.now();
+    const label = capture.reel.advance(1 / FPS, index / FPS), rendered = performance.now();
+    drawFrame(capture.canvas, label); const copied = performance.now();
+    const image = png ? capture.canvas.toDataURL('image/png').split(',')[1] : undefined;
+    const encoded = performance.now();
+    capture.timings.render += rendered - start; capture.timings.readback += copied - rendered; capture.timings.encode += encoded - copied;
+    capture.states.add(game.animator.diagnostics.state); capture.frame++;
+    panel.dataset.frames = String(capture.frame); say(`Запись настоящих кадров: ${capture.frame} / ${FRAME_COUNT}`);
+    return { index, png: image, animationUpdates: game.animationFrames - capture.before.animation,
+      physicsSteps: game.physics.steps - capture.before.physics,
+      frameMilliseconds: { render: rendered - start, readback: copied - rendered, encode: encoded - copied },
+      drawCalls: game.renderer.info.render.calls, triangles: game.renderer.info.render.triangles, shotsFired: capture.reel.diagnostics.shots.length };
+  };
+  const finishFrameCapture = ({ partial = false } = {}) => {
+    const capture = frameCapture; assert(capture, 'No frame export to finish');
+    const report = { kind: 'deterministic-production-showcase', fps: FPS, frames: capture.frame, duration: capture.frame / FPS,
+      width: 960, height: 720, animationUpdates: game.animationFrames - capture.before.animation, physicsSteps: game.physics.steps - capture.before.physics,
+      states: [...capture.states], shots: capture.reel.diagnostics.shots, encodingSeconds: (performance.now() - capture.started) / 1000,
+      timingsMilliseconds: capture.timings, realtimeBenchmark: false, complete: capture.frame === FRAME_COUNT };
+    try {
+      assert(partial || report.complete, 'The recording is incomplete');
+      assert(!report.complete || report.shots.length === 2 && report.shots.every(shot => shot.placed), 'The reel must contain two successful gameplay shots');
+      assert(report.animationUpdates === report.frames && report.physicsSteps === report.frames * 2, 'Production step count mismatch');
+      reportEl.textContent = JSON.stringify(report, null, 2); panel.dataset.status = report.complete ? 'frames-ready' : 'frames-partial';
+      return report;
+    } finally { capture.restore(); frameCapture = null; state.busy = false; }
+  };
+  // This opt-in API is also used by the shipped CI script, never loaded for a
+  // normal game visit. The user-facing ZIP button continues to work separately.
+  window.__LAB_EVIDENCE_CAPTURE__ = { begin: beginFrameCapture, next: nextFrameCapture, finish: finishFrameCapture };
   button('Кадры 60 FPS', 'evidence-frames', async () => {
     stop(); prepareReview(); state.busy = true; panel.dataset.status = 'recording-frames';
     const restore = videoSize(), reel = createReel(game, driver), canvas = makeFrameCanvas(), entries = [];
@@ -421,9 +534,10 @@ export function mountLabEvidence(game) {
         if (frame % 10 === 0) { say(`Запись настоящих кадров: ${frame + 1} / ${FRAME_COUNT}`); panel.dataset.frames = String(frame + 1); await yieldFrame(); }
       }
       const report = { kind: 'deterministic-production-showcase', fps: FPS, frames: FRAME_COUNT, duration: FRAME_COUNT / FPS, width: 960, height: 720,
-        animationUpdates: game.animationFrames - before.animation, physicsSteps: game.physics.steps - before.physics, states: [...states], encodingSeconds: (performance.now() - started) / 1000,
+        animationUpdates: game.animationFrames - before.animation, physicsSteps: game.physics.steps - before.physics, states: [...states], shots: reel.diagnostics.shots, encodingSeconds: (performance.now() - started) / 1000,
         realtimeBenchmark: false };
       assert(report.animationUpdates === FRAME_COUNT && report.physicsSteps === FRAME_COUNT * 2, 'Production step count mismatch');
+      assert(report.shots.length === 2 && report.shots.every(shot => shot.placed), 'The reel must contain two successful gameplay shots');
       entries.push({ name: 'report.json', blob: new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }) });
       say('Собираю архив с кадрами…'); const zip = await makeStoredZip(entries);
       download(zip, 'nesi-animation-v4-60fps-frames.zip', 'Скачать 600 кадров · 60 FPS');
@@ -454,7 +568,7 @@ export function mountLabEvidence(game) {
       }
       recorder.stop(); await ended;
       download(new Blob(chunks, { type: mimeType }), 'nesi-animation-v4-realtime.webm', 'Скачать видео WebM');
-      reportEl.textContent = JSON.stringify({ kind: 'realtime-production-showcase', frames, duration: elapsed, actualAverageFPS: frames / elapsed, simulatedDuration: simulation, requestedFrameDuplication: false }, null, 2);
+      reportEl.textContent = JSON.stringify({ kind: 'realtime-production-showcase', frames, duration: elapsed, actualAverageFPS: frames / elapsed, simulatedDuration: simulation, requestedFrameDuplication: false, shots: reel.diagnostics.shots }, null, 2);
       panel.dataset.status = 'video-ready'; say(`Видео готово. Фактическая частота записи: ${(frames / elapsed).toFixed(1)} кадров/с.`);
     } finally {
       if (recorder?.state === 'recording') recorder.stop();
@@ -471,5 +585,5 @@ export function mountLabEvidence(game) {
   button('Остановить', 'evidence-stop', () => { stop(); render(); say('Кадр остановлен.'); });
   panel.addEventListener('pointerdown', event => event.stopPropagation());
   panel.addEventListener('mousedown', event => event.stopPropagation());
-  return { driver, panel, stop, dispose: () => { stop(); state.urls.forEach(url => URL.revokeObjectURL(url)); panel.remove(); } };
+  return { driver, panel, stop, dispose: () => { stop(); frameCapture?.restore(); delete window.__LAB_EVIDENCE_CAPTURE__; state.urls.forEach(url => URL.revokeObjectURL(url)); panel.remove(); } };
 }

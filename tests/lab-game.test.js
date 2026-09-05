@@ -131,7 +131,8 @@ test('ordinary gun fire places a portal without activating aim or moving the cam
     center: new THREE.Vector3(0, 3, 10.1), normal: new THREE.Vector3(0, 0, 1) });
   panel.visible = false;
   game.camera = new THREE.PerspectiveCamera(62, 16 / 9, .06, 160);
-  game.cameraRig = new LabCamera({ camera: game.camera, blockers: game.cameraBlockers });
+  game.cameraRig = new LabCamera({ camera: game.camera, blockers: game.cameraBlockers,
+    isBlocker: object => game.isActiveBlocker(object) });
   game.pitch = 0; game.cameraRig.reset(game.playerPosition, game.yaw, game.pitch);
   let shots = 0; game.heldDevice.fire = () => { shots++; };
   for (let i = 0; i < 180; i++) game.updateVisuals(1 / 60, 1);
@@ -236,14 +237,14 @@ test('the same held companion crosses a doorway in both directions without disap
   assert.equal(game.stage, 0); assert.equal(game.heldCube, cargo); game.close();
 });
 
-test('settled weight latches sliding door leaves, keeping their frame fixed and clearance physical', () => {
+test('settled weight opens sliding leaves; removing weight closes them with the frame fixed', () => {
   const game = fixture(), door = game.doors[0], pad = CHAMBERS[0].button;
   const framePosition = door.art.position.clone();
   putCargo(game, pad[0], .4, pad[2]); game.cargo.velocity.set(4, 0, 0);
   run(game, .7, 'updateDoors'); assert.equal(door.opened, false, 'a fast pass does not latch');
   game.cargo.velocity.set(0, 0, 0); game.heldCube = game.cargo;
   run(game, .7, 'updateDoors'); assert.equal(door.opened, false, 'a held object is not weight on the switch');
-  game.heldCube = null; run(game, .3, 'updateDoors'); assert.equal(door.opened, false);
+  game.heldCube = null; run(game, .1, 'updateDoors'); assert.equal(door.opened, false);
   for (let i = 0; i < 30 && !door.opened; i++) game.updateDoors(STEP);
   assert.equal(door.opened, true);
   const push = () => {
@@ -252,12 +253,16 @@ test('settled weight latches sliding door leaves, keeping their frame fixed and 
     return position.z;
   };
   assert.ok(push() >= door.z + .59, 'a newly activated door remains solid');
-  putCargo(game, 5, .4, 8); run(game, 1.5, 'updateDoors');
-  assert.equal(door.opened, true, 'the player can retrieve the companion after unlocking');
+  run(game, 1.5, 'updateDoors');
+  assert.equal(door.opened, true, 'weight holds the circuit open');
   assert.ok(door.leafColliders[0].box.max.x < -.5 && door.leafColliders[1].box.min.x > .5, 'leaves move sideways clear of the capsule');
   assert.ok(door.leafColliders.every(collider => collider.box.min.y === 0 && collider.box.max.y === 5 && collider.enabled));
   assert.ok(door.art.position.equals(framePosition), 'the entire door model must not travel upward');
-  assert.ok(Math.abs(push() - (door.z + .3)) < .001); game.close();
+  assert.ok(Math.abs(push() - (door.z + .3)) < .001);
+  putCargo(game, 5, .4, 8); run(game, 1.5, 'updateDoors');
+  assert.equal(door.opened, false, 'removing weight must immediately release the circuit');
+  assert.ok(door.progress < .003, 'unoccupied doorway closes again');
+  assert.ok(push() >= door.z + .59); game.close();
 });
 
 test('pickup requires line of sight, including invisible collision proxies', () => {
@@ -266,6 +271,33 @@ test('pickup requires line of sight, including invisible collision proxies', () 
   assert.equal(game.toggleCube(), false); assert.equal(game.heldCube, null);
   game.cameraBlockers = game.cameraBlockers.filter(mesh => mesh !== wall.mesh);
   assert.equal(game.toggleCube(), true); assert.equal(game.heldCube, game.cargo); game.close();
+});
+
+test('an opened energy field stops blocking pickup, carry targets and the camera; closing restores them', () => {
+  const game = fixture(), barrier = game.mechanisms.barrier;
+  barrier.mesh.visible = false; barrier.mesh.userData.collisionProxy = true;
+  game.playerPosition.set(0, 0, -14); game.facing = Math.PI;
+  putCargo(game, 0, 1.06, -16);
+  assert.equal(game.toggleCube(), false, 'a closed invisible field must still block pickup');
+  putCargo(game, -4, .4, -10); run(game, 1.5, 'updateMechanisms');
+  putCargo(game, 0, 1.06, -16);
+  assert.equal(barrier.collider.enabled, false);
+  assert.equal(game.toggleCube(), true, 'the disabled field cannot remain an invisible interaction wall');
+  game.playerPosition.set(0, 0, -14.5); putCargo(game, 0, 1.06, -14.7); game.heldCube = game.cargo;
+  game.updateCubes(STEP);
+  assert.ok(Math.abs(game.physics.carryTarget.position.z + 15.22) < 1e-8, 'the carry target must extend naturally through the open field');
+  const camera = new THREE.PerspectiveCamera(62, 16 / 9, .06, 160);
+  const rig = new LabCamera({ camera, blockers: game.cameraBlockers, isBlocker: object => game.isActiveBlocker(object) });
+  rig.reset(new THREE.Vector3(0, 0, -16), 0, -.15);
+  assert.equal(rig.obstructed, false); assert.ok(rig.distance > 6.2, 'camera collapsed against a deactivated field');
+  game.heldCube = null; game.playerPosition.set(3, 0, -14); putCargo(game, 3, .4, -16);
+  run(game, 1.5, 'updateMechanisms');
+  assert.equal(barrier.collider.enabled, true);
+  game.playerPosition.set(0, 0, -14); putCargo(game, 0, 1.06, -16);
+  assert.equal(game.toggleCube(), false, 'closing must restore interaction collision');
+  rig.reset(new THREE.Vector3(0, 0, -16), 0, -.15);
+  assert.equal(rig.obstructed, true); assert.ok(rig.distance < 1, 'closing must restore camera collision');
+  game.close();
 });
 
 test('drop preserves pose and momentum and cannot pass through a nearby wall', () => {
@@ -354,4 +386,61 @@ test('finishing requires the companion at the exit, not merely an opened last do
   putCargo(game, 0, .4, -44); game.updatePlaying(STEP); assert.equal(wins, 0);
   putCargo(game, 0, .4, -47.5); game.updatePlaying(STEP); assert.equal(wins, 1);
   assert.equal(game.cubes.length, 1); game.close();
+});
+
+test('a floor portal in a pressure pad retrieves the SAME loose companion and closes the door', () => {
+  const game = fixture(), pad = CHAMBERS[0].button;
+  const top = addWall(game, pad[0], .07, pad[2], 3.3, .14, 4).mesh;
+  game.markPortalSurface(top, new THREE.Vector3(pad[0], .15, pad[2]), new THREE.Vector3(0, 1, 0), 1.65, 2);
+  const floor = game.floors[0].mesh;
+  game.markPortalSurface(floor, new THREE.Vector3(0, .012, -14.5), new THREE.Vector3(0, 1, 0), 12, 36.5);
+  putCargo(game, pad[0], .65, pad[2]); run(game, 1);
+  assert.equal(game.doors[0].opened, true);
+  assert.equal(game.placeOnPanel(1, floor, new THREE.Vector3(0, .012, -6)), true);
+  assert.equal(game.placeOnPanel(0, top, top.userData.center), true);
+  const body = game.physics.cargoBody;
+  for (let i = 0; i < 120 && game.physics.portalTransports === 0; i++) game.updatePlaying(STEP);
+  assert.equal(game.physics.portalTransports, 1, 'free weight must fall through its own plate');
+  assert.ok(game.cargo.position.z < -5); assert.equal(game.physics.cargoBody, body);
+  game.playerPosition.set(0, 0, -5.1); game.facing = Math.PI;
+  assert.equal(game.toggleCube(), true); run(game, 1.5);
+  assert.equal(game.heldCube, game.cargo); assert.equal(game.doors[0].opened, false);
+  assert.ok(game.doors[0].progress < .01); game.close();
+});
+
+test('the player can enter a floor portal while carrying and leave a wall portal together', () => {
+  const game = fixture(), floor = game.floors[0].mesh;
+  game.markPortalSurface(floor, new THREE.Vector3(0, .012, -14.5), new THREE.Vector3(0, 1, 0), 12, 36.5);
+  assert.equal(game.placeOnPanel(0, floor, new THREE.Vector3(0, .012, 18)), true);
+  game.portals.place(1, new THREE.Vector3(8, 1.6, 5), new THREE.Vector3(-1, 0, 0));
+  putCargo(game, 0, 1.06, 17.28); game.heldCube = game.cargo;
+  const body = game.physics.cargoBody;
+  for (let i = 0; i < 150 && !game.teleportCount; i++) game.updatePlaying(STEP);
+  assert.equal(game.teleportCount, 1, 'the floor must open under the full player capsule');
+  assert.equal(game.heldCube, game.cargo); assert.equal(game.physics.cargoBody, body);
+  assert.ok(game.playerPosition.x < 7.5); assert.ok(game.playerPosition.distanceTo(game.cargo.position) < 2.5);
+  assert.ok(game.playerVelocity.x < -1); game.close();
+});
+
+test('launch pad accepts a carrying player and a loose companion; firing stays disabled while held', () => {
+  const game = fixture(); game.stage = 2; game.launchTime = 0;
+  game.playerPosition.set(0, 0, -31.5); putCargo(game, 0, 1.06, -32.22); game.heldCube = game.cargo;
+  assert.equal(game.placePortal(0), false);
+  game.updatePlaying(STEP);
+  assert.ok(game.playerVelocity.y > 9); assert.ok(game.playerVelocity.z < -9);
+  assert.equal(game.heldCube, game.cargo);
+  game.physics.release(); game.heldCube = null; game.playerPosition.set(4, 0, -30);
+  putCargo(game, 0, .39, -31.5); game.physics.grounded = true; game.cargoLaunchCooldown = 0;
+  game.updateCubes(STEP);
+  assert.ok(game.cargo.velocity.y > 9); assert.ok(game.cargo.velocity.z < -9); game.close();
+});
+
+test('a closing doorway waits for the player then closes when the opening is clear', () => {
+  const game = fixture(), door = game.doors[0];
+  door.opened = true; door.progress = door.previousProgress = 1;
+  game.playerPosition.set(0, 0, door.z); putCargo(game, 5, .4, 8);
+  run(game, 1, 'updateDoors');
+  assert.equal(door.opened, false); assert.ok(door.progress > .99, 'safety sensor protects a crossing');
+  game.playerPosition.z -= 2; run(game, 1.5, 'updateDoors');
+  assert.ok(door.progress < .003); game.close();
 });

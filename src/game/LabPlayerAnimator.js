@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LabFootContact } from './LabFootContact.js';
 
 // Landmarks measured on model-01-player.glb. Source coordinates: -Z up,
 // +Y forward. The rear equipment is a backpack attached to the torso.
@@ -214,6 +215,7 @@ export class LabPlayerAnimator {
     this.carrier = carrier;
     this.onStateChange = onStateChange;
     this.rig = createLabPlayerRig(visual);
+    this.groundContact = new LabFootContact(this.rig);
     this.bones = this.rig.bones;
     this.state = 'idle';
     this.elapsed = 0;
@@ -252,6 +254,7 @@ export class LabPlayerAnimator {
       backpackRigid: true,
       separateLimbMotion: true,
       footContact: { ...this.footContact },
+      groundContact: this.groundContact.diagnostics,
       locomotion: this.locomotionState,
       movementDirection: { forward: this.directionForward, right: this.directionRight },
       bodyInertia: { forward: this.inertiaForward, right: this.inertiaRight },
@@ -272,6 +275,7 @@ export class LabPlayerAnimator {
   }
 
   reset() {
+    this.groundContact?.reset();
     for (const { name } of LAB_PLAYER_JOINTS) {
       this.bones[name].position.copy(this.rig.rest[name]);
       this.bones[name].quaternion.identity();
@@ -340,7 +344,7 @@ export class LabPlayerAnimator {
 
   update(input = {}) {
     const dt = clamp(Number.isFinite(input.dt ?? 1 / 60) ? (input.dt ?? 1 / 60) : 0, 0, 0.05);
-    const iterations = Math.max(1, Math.ceil(dt * 240 - 1e-9));
+    const iterations = Math.max(1, Math.ceil(dt * 720 - 1e-9));
     const step = dt / iterations;
     const startTime = Number.isFinite(input.elapsed) ? input.elapsed - dt : this.elapsed;
     // Keep the FK blend independent of the previous frame's IK overlay. Blending
@@ -377,6 +381,8 @@ export class LabPlayerAnimator {
       this.stepPose({ ...input, dt: step, elapsed: startTime + step * (index + 1) });
     }
     for (const { name } of LAB_PLAYER_JOINTS) this.basePose[name].copy(this.bones[name].quaternion);
+    this.groundContact.update({ dt, root: this.visual.parent, grounded: input.grounded !== false && !input.phase,
+      contact: this.footContact, sampleGround: input.sampleGround, moving: this.moveBlend });
     this.applyCarryReach();
     // Updating the skeleton once per render keeps substeps inexpensive on the
     // original dense model and lets the attached device follow the newest pose.
@@ -468,9 +474,11 @@ export class LabPlayerAnimator {
       if (expressionTime >= this.expression.duration) this.expression = null;
     }
     const run = smooth(2.5, 5.7, this.speed);
-    const stride = THREE.MathUtils.lerp(0.047, 0.100, run);
+    const stride = THREE.MathUtils.lerp(0.096, 0.139, run);
     const turning = smooth(0.2, 1.8, Math.abs(this.turn)) * (1 - this.moveBlend);
-    const frequency = Math.max(clamp(this.speed / Math.max(0.5, stride * 4 * this.modelScale), 0, 3.2), turning * 1.5);
+    // Match planted-foot speed to root travel: the foot covers 2*stride during
+    // 57% of the cycle. The old 3.2 Hz clamp made fast movement visibly skate.
+    const frequency = Math.max(clamp(this.speed * .57 / Math.max(.25, stride * 2 * this.modelScale), 0, 5.0), turning * 1.5);
     this.gait = (this.gait + dt * frequency) % 1;
     // Closed-form damped spring: a soft rebound, independent of frame size.
     const decay = Math.exp(-10.5 * dt), omega = Math.sqrt(260 - 10.5 ** 2);
@@ -495,18 +503,18 @@ export class LabPlayerAnimator {
     // Reduce the old permanent squat, keeping bounce in legs and pelvis rather
     // than changing the visual/root scale or moving the camera.
     const strideBounce = (0.004 + run * 0.008) * (1 - Math.cos(cadence * 2)) * 0.5;
-    const compression = (0.017 + run * 0.025 - strideBounce) * moving + 0.008 * turnStep - this.landing;
+    const compression = (0.040 + run * 0.036 - strideBounce) * moving + 0.008 * turnStep - this.landing;
     this.bones.Body.position.copy(this.rig.rest.Body);
     this.bones.Body.position.z += compression + this.interactionBlend * 0.011 + this.anticipation * 0.014 - hop * 0.012
       + Math.sin(this.elapsed * 2.1) * 0.0007 * this.idleBlend;
     this.bones.Body.position.x += idleShift * 0.004 + Math.sin(cadence) * moving * (0.0025 + run * 0.0015);
     const body = this.jointTargets.Body;
     body.set(0.035 * moving * this.directionForward + 0.055 * this.inertiaForward * ground
-      + 0.035 * this.carryBlend + this.interactionBlend * 0.055 - this.landing * 0.55,
+      + 0.05 * this.carryBlend + this.interactionBlend * 0.095 - this.landing * 0.55,
       -0.03 * moving * this.directionRight - 0.045 * this.inertiaRight * ground - idleShift * 0.009,
-      Math.sin(cadence + 0.15) * 0.023 * moving - this.turn * 0.018);
+      Math.sin(cadence + 0.15) * 0.045 * moving - this.turn * 0.024);
     body.x += this.airBlend * (0.02 + 0.045 * this.ascentBlend) + this.anticipation * 0.035;
-    body.y += Math.sin(cadence) * moving * 0.008;
+    body.y += Math.sin(cadence) * moving * 0.014;
     this.jointTargets.Head.set(-body.x * 0.6 - this.aimPitch * this.aimBlend * 0.2 + Math.sin(this.elapsed * 1.7) * 0.004,
       -body.y * 0.65 + curious * 0.065 + joy * Math.sin(expressionTime * 10) * 0.03,
       -body.z * 0.65 + Math.sin(this.elapsed * 0.85) * 0.075 * this.idleBlend

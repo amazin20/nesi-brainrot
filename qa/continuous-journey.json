@@ -1,0 +1,271 @@
+{
+  "identity": "9750f021-d52e-4029-8d77-1bef67a2a0f2",
+  "bodyId": 122,
+  "cargoResets": 0,
+  "completed": true,
+  "state": "won",
+  "milestones": [
+    {
+      "name": "both crossed the first gap",
+      "player": [
+        10.86426958123349,
+        0,
+        1.262874480409431
+      ],
+      "cargo": [
+        10.143819466285834,
+        1.0599667156615147,
+        1.2630521392735015
+      ],
+      "held": true,
+      "stage": 0,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    },
+    {
+      "name": "companion retrieved through pressure plate",
+      "player": [
+        0.000845739693410959,
+        0,
+        -5.08284211884805
+      ],
+      "cargo": [
+        -9.571555833671324,
+        0.3898201198484271,
+        -6.839142217574323
+      ],
+      "held": false,
+      "stage": 1,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    },
+    {
+      "name": "first door released its weight circuit",
+      "player": [
+        -10.815811849600308,
+        0,
+        -6.85458109560402
+      ],
+      "cargo": [
+        -11.526342526634558,
+        1.0599987294458444,
+        -6.970962116287957
+      ],
+      "held": true,
+      "stage": 1,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    },
+    {
+      "name": "companion retrieved through pressure plate",
+      "player": [
+        -0.0016595608655885134,
+        0,
+        -16.191283514817012
+      ],
+      "cargo": [
+        9.571175255850504,
+        0.389987785339072,
+        -19.478069841774992
+      ],
+      "held": false,
+      "stage": 1,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    },
+    {
+      "name": "barrier closed after retrieval",
+      "player": [
+        10.793394673504986,
+        0,
+        -19.50020669257434
+      ],
+      "cargo": [
+        11.481774335748058,
+        1.059995040452222,
+        -19.711212470746766
+      ],
+      "held": true,
+      "stage": 1,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    },
+    {
+      "name": "lift carried both",
+      "player": [
+        -5.998747245472971,
+        2.2,
+        -18.48794210220459
+      ],
+      "cargo": [
+        -5.974965434686218,
+        3.260003793847045,
+        -19.20754923493447
+      ],
+      "held": true,
+      "stage": 1,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    },
+    {
+      "name": "companion retrieved through pressure plate",
+      "player": [
+        0.0012617207985311813,
+        0,
+        -27.390204273047964
+      ],
+      "cargo": [
+        -9.603475315037494,
+        0.3898230200495632,
+        -30.52017429991063
+      ],
+      "held": false,
+      "stage": 2,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    },
+    {
+      "name": "both crossed the second gap on the launch pad",
+      "player": [
+        0.04578240347846698,
+        0.14000000029802323,
+        -42.59097842043036
+      ],
+      "cargo": [
+        0.04576866544117294,
+        1.1999792837174883,
+        -43.311333116265565
+      ],
+      "held": true,
+      "stage": 2,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    },
+    {
+      "name": "companion retrieved through pressure plate",
+      "player": [
+        -0.23751735540745933,
+        0,
+        -48.390222613906865
+      ],
+      "cargo": [
+        -9.571533088612183,
+        0.3899190695835736,
+        -48.986765285056016
+      ],
+      "held": false,
+      "stage": 2,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    },
+    {
+      "name": "both arrived at the exit",
+      "player": [
+        -10.825453988466466,
+        0,
+        -48.99267840582622
+      ],
+      "cargo": [
+        -11.076312520201206,
+        0.39440845406762054,
+        -48.05592089874299
+      ],
+      "held": false,
+      "stage": 2,
+      "doors": [
+        false,
+        false,
+        false
+      ],
+      "barrier": false
+    }
+  ],
+  "geometryChecks": {
+    "carry": {
+      "blend": 1,
+      "leftError": 8.326672684688674e-17,
+      "rightError": 3.5596458096434965e-15,
+      "leftClamped": false,
+      "rightClamped": false,
+      "holstered": true
+    },
+    "shotCamera": {
+      "position": 8.523515605135068e-9,
+      "angle": 0,
+      "fov": 0
+    },
+    "table": {
+      "start": [
+        7.800000000000001,
+        0.1545247354307389,
+        16.83204867839813
+      ],
+      "finish": [
+        7.800000000000001,
+        1.2545247340896344,
+        15.84523763147688
+      ],
+      "peak": 1.6820247354307412,
+      "top": 1.254524735430739,
+      "grounded": true
+    },
+    "tableWithCompanion": {
+      "grounded": true,
+      "peak": 1.6820247354307412,
+      "top": 1.254524735430739,
+      "finish": [
+        7.8,
+        1.2545247340896344,
+        15.939819418119844
+      ],
+      "sameCompanion": true
+    },
+    "chairWithCompanion": {
+      "grounded": true,
+      "peak": 1.5275000000000023,
+      "top": 0.69,
+      "finish": [
+        5.4098999997019765,
+        0.6899999986588954,
+        17.1
+      ],
+      "sameCompanion": true
+    }
+  }
+}

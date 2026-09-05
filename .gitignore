@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 preview_root/
 review-preview/assets/*.map

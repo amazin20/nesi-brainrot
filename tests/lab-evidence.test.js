@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEvidenceDriver, createEvidenceFrameStepper, makeStoredZip } from '../src/game/LabEvidence.js';
+import * as THREE from 'three';
+import { fireReelPortal, createEvidenceDriver, createEvidenceFrameStepper, makeStoredZip } from '../src/game/LabEvidence.js';
 
 test('evidence advances one production animation and two physics steps for each 60 fps frame', () => {
   const physical = [], visual = [];
@@ -40,4 +41,17 @@ test('recording keeps one animator update per rendered frame without high-refres
     assert.equal(visuals, 10 * fps, `${fps} Hz actual render count`);
     assert.ok(Math.abs(visualTime - 10) < 1e-10);
   }
+});
+
+
+test('reel shots use production aiming and restore the review camera even after a rejected shot', () => {
+  const camera = new THREE.PerspectiveCamera(); camera.position.set(2, 3, 4); camera.lookAt(5, 1, 8);
+  const position = camera.position.clone(), quaternion = camera.quaternion.clone();
+  const game = { camera, portals: { portals: [{ position: new THREE.Vector3(1, 1.6, 15) }] } };
+  const driver = { aimPanel: (index, stage) => { assert.equal(index, 0); assert.equal(stage, 0); camera.position.set(-10, 1.6, 4); camera.lookAt(-11.6, 1.6, 15); return { uuid: 'panel-0' }; } };
+  assert.deepEqual(fireReelPortal(game, driver, 0), { index: 0, placed: true, panel: 'panel-0', position: [1, 1.6, 15] });
+  assert.ok(camera.position.equals(position)); assert.ok(camera.quaternion.equals(quaternion));
+  driver.aimPanel = () => { camera.position.set(-20, 4, 5); camera.lookAt(0, 0, 0); throw new Error('Shot rejected'); };
+  assert.throws(() => fireReelPortal(game, driver, 0), /Shot rejected/);
+  assert.ok(camera.position.equals(position)); assert.ok(camera.quaternion.equals(quaternion));
 });

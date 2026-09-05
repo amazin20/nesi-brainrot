@@ -26,9 +26,10 @@ function spring(value, velocity, goal, frequency, dt) {
  * This module never changes player meshes, materials, or the renderer.
  */
 export class LabCamera {
-  constructor({ camera, blockers = [] }) {
+  constructor({ camera, blockers = [], isBlocker = () => true }) {
     this.camera = camera;
     this.blockers = blockers;
+    this.isBlocker = isBlocker;
     this.focus = new THREE.Vector3();
     this.focusVelocity = new THREE.Vector3();
     this.lastTarget = new THREE.Vector3();
@@ -63,7 +64,7 @@ export class LabCamera {
     this.lastTarget.copy(target);
     this.focusVelocity.set(0, 0, 0);
     this.yaw = yaw;
-    this.pitch = THREE.MathUtils.clamp(pitch, -0.72, 0.3);
+    this.pitch = THREE.MathUtils.clamp(pitch, -1.15, 1.15);
     this.yawVelocity = 0;
     this.pitchVelocity = 0;
     this.distance = 6.5;
@@ -101,7 +102,7 @@ export class LabCamera {
     const yawGoal = this.yaw + Math.atan2(Math.sin(yaw - this.yaw), Math.cos(yaw - this.yaw));
     [this.yaw, this.yawVelocity] = spring(this.yaw, this.yawVelocity, yawGoal, 38, step);
     [this.pitch, this.pitchVelocity] = spring(
-      this.pitch, this.pitchVelocity, THREE.MathUtils.clamp(pitch, -0.72, 0.3), 38, step,
+      this.pitch, this.pitchVelocity, THREE.MathUtils.clamp(pitch, -1.15, 1.15), 38, step,
     );
     // A shot must never move the whole frame. Even an explicit aim change moves
     // the shoulder and boom continuously instead of switching their direction
@@ -173,7 +174,8 @@ export class LabCamera {
         .addScaledVector(this.castUp, y * radius);
       this.raycaster.set(this.castOrigin, this.castDirection);
       const hits = this.raycaster.intersectObjects(this.blockers, true);
-      if (hits.length > 0) safeDistance = Math.min(safeDistance, Math.max(0, hits[0].distance - radius - 0.035));
+      const hit = hits.find(candidate => this.isBlocker(candidate.object));
+      if (hit) safeDistance = Math.min(safeDistance, Math.max(0, hit.distance - radius - 0.035));
     }
     if (safeDistance >= distance) return false;
     position.copy(origin).addScaledVector(this.castDirection, safeDistance);

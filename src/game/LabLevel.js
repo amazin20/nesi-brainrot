@@ -47,6 +47,9 @@ export function buildLabArchitecture(game) {
     const mesh = game.box((minX + maxX) / 2, y - thickness / 2, (minZ + maxZ) / 2,
       maxX - minX, thickness, maxZ - minZ, material, { solid: true });
     descriptor.mesh = mesh;
+    if (material === m.floor || material === inset) game.markPortalSurface(mesh,
+      new THREE.Vector3((minX + maxX) / 2, y + .012, (minZ + maxZ) / 2),
+      new THREE.Vector3(0, 1, 0), (maxX - minX) / 2, (maxZ - minZ) / 2);
     return descriptor;
   };
   const signal = points => {
@@ -102,7 +105,8 @@ export function buildLabArchitecture(game) {
   }
   game.box(0, 3.2, 22.2, 24.8, 12.2, .4, m.wall, { solid: true });
   game.box(0, 3.2, -51.2, 24.8, 12.2, .4, m.wall, { solid: true });
-  game.box(0, 9.15, -14.5, 24.8, .3, 73.4, inset, { solid: true });
+  const ceiling = game.box(0, 9.15, -14.5, 24.8, .3, 73.4, inset, { solid: true });
+  game.markPortalSurface(ceiling, new THREE.Vector3(0, 9, -14.5), new THREE.Vector3(0, -1, 0), 12.4, 36.7);
 
   const rooms = [{ center: 9.5, length: 25 }, { center: -14.5, length: 23 }, { center: -38.5, length: 25 }];
   rooms.forEach((room, index) => {
@@ -164,15 +168,12 @@ export function buildLabArchitecture(game) {
   const barrierArt = game.addProp(20, 4.04, [0, .02, -15.04], 1);
   const barrierIndicator = makeIndicator([0, 5.95, -14.95], AMBER, .19);
   const chargePosition = new THREE.Vector3(-4, 0, -10);
-  const chargeArt = game.addProp(18, 2.05, chargePosition.toArray(), 1);
-  const chargeHeight = new THREE.Box3().setFromObject(chargeArt).getSize(new THREE.Vector3()).y;
-  chargeArt.scale.y *= .14 / Math.max(chargeHeight, .01);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(1.05, .07, 10, 48), new THREE.MeshBasicMaterial({ color: AMBER }));
   ring.rotation.x = -Math.PI / 2; ring.position.copy(chargePosition).y = .17; scene.add(ring);
   const barrierCable = signal([[-4, .085, -10], [-4, .085, -13], [-2.4, .085, -13], [-2.4, .085, -15]]);
   const barrier = { mesh: barrierMesh, collider: barrierCollider, art: barrierArt, indicator: barrierIndicator,
     position: new THREE.Vector3(0, 0, -15), baseY: 2.65, artBaseY: .02, progress: 0, opened: false, links: [barrierCable] };
-  const chargePad = { position: chargePosition, ring, art: chargeArt, links: [barrierCable] };
+  const chargePad = { ...game.addPressurePad(chargePosition, 1, ring), links: [barrierCable] };
 
   const ledgeFloor = floor(-8, -3, -25, -20, 2.2, inset, 2.2);
   game.box(-8.06, 2.6, -22.5, .12, .8, 5, teal, { solid: true });
@@ -197,6 +198,7 @@ export function buildLabArchitecture(game) {
   const lift = { group: liftGroup, mesh: liftMesh, collider: liftCollider, floor: liftFloor, art: liftArt,
     minY: 0, maxY: 2.2, position: new THREE.Vector3(-6, 0, -18.5), progress: 0, indicator: liftIndicator, ledgeFloor };
   game.label('↑', -6, 3.5, -20.14, 1.5, '#669fa4');
+  game.label('X — СБРОС ПАРЫ · ОСТАВЬ ОДИН ПОРТАЛ ПОД ДРУГОМ', -5.4, 3.4, -25.15, 5.2, '#527c86');
 
   const launchPad = game.addProp(21, 2.75, [0, 0, -31.5], 2);
   const launchHeight = new THREE.Box3().setFromObject(launchPad).getSize(new THREE.Vector3()).y;
@@ -205,7 +207,7 @@ export function buildLabArchitecture(game) {
   launchRing.rotation.x = -Math.PI / 2; launchRing.position.set(0, .17, -31.5); scene.add(launchRing);
   game.label('↑', 0, .035, -29.4, 2.2, '#bf8341').rotation.x = -Math.PI / 2;
   const doorLinks = [
-    signal([[4.6, .09, 0], [4.6, .09, -2.65], [2.95, .09, -2.65]]),
+    signal([[3.5, .09, 1.2], [3.5, .09, -2.65], [2.95, .09, -2.65]]),
     signal([[-5, 2.29, -23], [-3.13, 2.29, -23], [-3.13, 2.29, -25.23], [-3.13, .09, -25.23], [-2.95, .09, -25.7]]),
     signal([[0, .09, -44], [0, .09, -46.55], [2.95, .09, -46.55]]),
   ];
@@ -265,6 +267,6 @@ export function buildLabArchitecture(game) {
   game.exploration = { table: { model: table, collider: tableCollider, position: table.position.clone(), top: tableTop },
     chair: { model: chair, seatY, position: chair.position.clone() }, ramps: [nookRamp, slope], tiles };
   game.label('ПОПРОБУЙ ЗАПРЫГНУТЬ', 7.7, 2.6, 14.8, 4.8, '#426b7d');
-  game.label('ЦВЕТНАЯ СТЕНА • БЕЗ ПРОХОДОВ', 0, 4.35, 21.91, 9.2, '#486579', Math.PI);
+  game.label('БЕЛОЕ: ПОРТАЛЫ · ЦВЕТНОЕ: НЕЛЬЗЯ', 0, 4.35, 21.91, 9.2, '#486579', Math.PI);
   return { bridges, terminals, lift, barrier, chargePad, launchPad, launchRing, recoveryFloors, doorLinks };
 }
