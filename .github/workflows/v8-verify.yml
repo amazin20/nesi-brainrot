@@ -32,7 +32,8 @@ jobs:
           PY
           git apply --check /tmp/v8.patch
           git apply /tmp/v8.patch
-          rm maintenance/v8-patch-*.b64
+          cp scripts/v8-ui-journey.mjs scripts/v8-browser.mjs
+          rm scripts/v8-ui-journey.mjs maintenance/v8-patch-*.b64
       - name: Install pinned dependencies and browser driver
         run: |
           npm ci
