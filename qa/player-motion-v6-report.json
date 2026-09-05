@@ -1,0 +1,143 @@
+{
+  "method": "Actual runtime mesh, production LabPlayerAnimator and foot contact, CPU skinning; orthographic base texture capture; no browser/PBR claim",
+  "states": {
+    "idle": {
+      "cadenceHz": 0,
+      "frames": 30,
+      "phases": [
+        "grounded"
+      ],
+      "bootMeshMeasurements": {
+        "left": {
+          "rootRelativeCenterRangeMetres": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maximumCenterDisplacementMetres": 0.0,
+          "sampleIntervalSeconds": 0.05
+        },
+        "right": {
+          "rootRelativeCenterRangeMetres": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maximumCenterDisplacementMetres": 0.0,
+          "sampleIntervalSeconds": 0.05
+        }
+      }
+    },
+    "walk": {
+      "cadenceHz": 1.7119999999999975,
+      "frames": 30,
+      "phases": [
+        "grounded"
+      ],
+      "bootMeshMeasurements": {
+        "left": {
+          "rootRelativeCenterRangeMetres": [
+            0.016656000167131424,
+            0.07777199894189835,
+            0.24823899567127228
+          ],
+          "maximumCenterDisplacementMetres": 0.13937614858150482,
+          "sampleIntervalSeconds": 0.05
+        },
+        "right": {
+          "rootRelativeCenterRangeMetres": [
+            0.015297000296413898,
+            0.08342300355434418,
+            0.25120899081230164
+          ],
+          "maximumCenterDisplacementMetres": 0.14057759940624237,
+          "sampleIntervalSeconds": 0.05
+        }
+      }
+    },
+    "run": {
+      "cadenceHz": 2.119999999999996,
+      "frames": 30,
+      "phases": [
+        "grounded"
+      ],
+      "bootMeshMeasurements": {
+        "left": {
+          "rootRelativeCenterRangeMetres": [
+            0.018319999799132347,
+            0.10107900202274323,
+            0.39922499656677246
+          ],
+          "maximumCenterDisplacementMetres": 0.17787720263004303,
+          "sampleIntervalSeconds": 0.05
+        },
+        "right": {
+          "rootRelativeCenterRangeMetres": [
+            0.017198000103235245,
+            0.10085500031709671,
+            0.40030500292778015
+          ],
+          "maximumCenterDisplacementMetres": 0.17804355919361115,
+          "sampleIntervalSeconds": 0.05
+        }
+      }
+    },
+    "jump": {
+      "cadenceHz": 1.7119999999952185,
+      "frames": 33,
+      "phases": [
+        "float",
+        "grounded",
+        "prepare_land",
+        "push_off"
+      ],
+      "bootMeshMeasurements": {
+        "left": {
+          "rootRelativeCenterRangeMetres": [
+            0.011979999952018261,
+            0.12326700240373611,
+            0.21313700079917908
+          ],
+          "maximumCenterDisplacementMetres": 0.08016198128461838,
+          "sampleIntervalSeconds": 0.03333333333333333
+        },
+        "right": {
+          "rootRelativeCenterRangeMetres": [
+            0.0107810003682971,
+            0.08749599754810333,
+            0.182327002286911
+          ],
+          "maximumCenterDisplacementMetres": 0.08497904241085052,
+          "sampleIntervalSeconds": 0.03333333333333333
+        }
+      }
+    },
+    "carry": {
+      "cadenceHz": 1.6159999999999992,
+      "frames": 30,
+      "phases": [
+        "grounded"
+      ],
+      "bootMeshMeasurements": {
+        "left": {
+          "rootRelativeCenterRangeMetres": [
+            0.018133999779820442,
+            0.06589700281620026,
+            0.22485199570655823
+          ],
+          "maximumCenterDisplacementMetres": 0.13554419577121735,
+          "sampleIntervalSeconds": 0.05
+        },
+        "right": {
+          "rootRelativeCenterRangeMetres": [
+            0.01624700054526329,
+            0.06962300091981888,
+            0.22997300326824188
+          ],
+          "maximumCenterDisplacementMetres": 0.13443586230278015,
+          "sampleIntervalSeconds": 0.05
+        }
+      }
+    }
+  }
+}

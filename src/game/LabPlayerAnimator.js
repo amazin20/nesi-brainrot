@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LabFootContact } from './LabFootContact.js';
 
 // Landmarks measured on model-01-player.glb. Source coordinates: -Z up,
 // +Y forward. The rear equipment is a backpack attached to the torso.
@@ -144,6 +145,50 @@ export function solveLabLeg(forward, down, upperLength = 0.117, lowerLength = Ma
   return { hip, knee: knee + ankleRest, ankle: -hip - knee - ankleRest };
 }
 
+/** The swing meets the planted path with matching velocity AND acceleration.
+ * A cubic ease stopped the foot at toe-off/strike in the previous cycle; this
+ * quintic keeps the trailing foot travelling back while it lifts, then carries
+ * it forward and eases into the next planted stride without a velocity corner.
+ */
+export function sampleLabFootCycle(cycle, stride, run = 0) {
+  cycle = ((cycle % 1) + 1) % 1;
+  const stance = THREE.MathUtils.lerp(.57, .44, clamp(run, 0, 1));
+  if (cycle < stance) return { path: stride * (1 - 2 * cycle / stance), lift: 0, planted: true };
+  const t = (cycle - stance) / (1 - stance);
+  const tangent = -2 * (1 - stance) / stance;
+  const ease = t * t * t * (10 + t * (-15 + 6 * t));
+  return { path: stride * (-1 + tangent * t + (2 - tangent) * ease),
+    lift: Math.sin(t * Math.PI) ** 4 * (0.033 + 0.047 * run), planted: false };
+}
+
+/** Solve a fixed-length anatomical arm in its shoulder-parent coordinates.
+ * The stable, outward/downward elbow pole avoids flipping at a straight arm.
+ * This returns rotations only: no scaling, translating joints, or editing skin.
+ */
+export function solveLabArm(shoulder, target, upperRest, lowerRest, side = 'L') {
+  const upperLength = upperRest.length(), lowerLength = lowerRest.length();
+  const offset = target.clone().sub(shoulder);
+  const requestedDistance = offset.length();
+  const direction = requestedDistance > 1e-8 ? offset.multiplyScalar(1 / requestedDistance)
+    : new THREE.Vector3(0, 1, 0);
+  const distance = clamp(requestedDistance, Math.abs(upperLength - lowerLength) + 0.003,
+    upperLength + lowerLength - 0.0005);
+  const pole = new THREE.Vector3(side === 'L' ? -0.62 : 0.62, -0.18, 0.78);
+  pole.addScaledVector(direction, -pole.dot(direction));
+  if (pole.lengthSq() < 1e-6) pole.set(0, 0, 1).addScaledVector(direction, -direction.z);
+  if (pole.lengthSq() < 1e-6) pole.set(1, 0, 0);
+  pole.normalize();
+  const along = (upperLength ** 2 + distance ** 2 - lowerLength ** 2) / (2 * distance);
+  const height = Math.sqrt(Math.max(0, upperLength ** 2 - along ** 2));
+  const upper = direction.clone().multiplyScalar(along).addScaledVector(pole, height);
+  const lower = direction.clone().multiplyScalar(distance).sub(upper);
+  const arm = new THREE.Quaternion().setFromUnitVectors(upperRest.clone().normalize(), upper.clone().normalize());
+  const forearm = new THREE.Quaternion().setFromUnitVectors(lowerRest.clone().normalize(),
+    lower.applyQuaternion(arm.clone().invert()).normalize());
+  return { arm, forearm, reachableTarget: shoulder.clone().addScaledVector(direction, distance),
+    clamped: Math.abs(distance - requestedDistance) > 1e-6 };
+}
+
 /**
  * Local 14-bone animation; the physics root and authored mesh stay authoritative.
  * update(): speed in world units/s; velocity.y in world units/s; turnRate in
@@ -156,7 +201,12 @@ export function solveLabLeg(forward, down, upperLength = 0.117, lowerLength = Ma
  * a short local right-hand recoil. HandR remains the device attachment bone.
  * trigger('celebrate'|'success'|'curious'|'jump'|'anticipate_jump'|'catch'|'drop')
  * adds a short expression without moving the physics root. triggerJump() is an
- * anticipation alias. update is intended for every rendered frame; bounded
+ * anticipation alias. carryGripTargets={left,right} supplies WORLD wrist contact
+ * points on the physical cargo. Two-bone IK follows them without moving cargo;
+ * diagnostics.carryReach reports world-space contact errors and reach clamping.
+ * Optional lookTarget is a WORLD point of interest; attention gently follows
+ * nearby objects in front while idle/carrying and yields completely to aiming.
+ * update is intended for every rendered frame; bounded
  * 1/240s animation substeps keep blends consistent across display refresh rates.
  */
 export class LabPlayerAnimator {
@@ -165,6 +215,7 @@ export class LabPlayerAnimator {
     this.carrier = carrier;
     this.onStateChange = onStateChange;
     this.rig = createLabPlayerRig(visual);
+    this.groundContact = new LabFootContact(this.rig);
     this.bones = this.rig.bones;
     this.state = 'idle';
     this.elapsed = 0;
@@ -186,6 +237,10 @@ export class LabPlayerAnimator {
     this.carrierParentQuaternion = new THREE.Quaternion();
     this.leftHandPosition = new THREE.Vector3();
     this.rightHandPosition = new THREE.Vector3();
+    this.basePose = Object.fromEntries(LAB_PLAYER_JOINTS.map(({ name }) => [name, new THREE.Quaternion()]));
+    this.gripTargets = { left: new THREE.Vector3(), right: new THREE.Vector3() };
+    this.releaseGripLocal = { left: new THREE.Vector3(), right: new THREE.Vector3() };
+    this.carryReach = { blend: 0, leftError: null, rightError: null, leftClamped: false, rightClamped: false };
     this.visual.userData.playerAppearanceMode = 'source-preserved-articulated';
     this.reset();
   }
@@ -199,13 +254,18 @@ export class LabPlayerAnimator {
       backpackRigid: true,
       separateLimbMotion: true,
       footContact: { ...this.footContact },
+      groundContact: this.groundContact.diagnostics,
       locomotion: this.locomotionState,
+      cadenceHz: this.cadenceHz ?? 0,
       movementDirection: { forward: this.directionForward, right: this.directionRight },
       bodyInertia: { forward: this.inertiaForward, right: this.inertiaRight },
       weaponBlend: this.weaponBlend,
       aimBlend: this.aimBlend,
       carryBlend: this.carryBlend,
       recoil: this.recoil,
+      carryReach: { ...this.carryReach },
+      airborne: { phase: this.airbornePhase, age: this.airAge, lift: this.ascentBlend, lead: this.takeoffLead },
+      attention: { blend: this.attentionBlend, yaw: this.attentionYaw, pitch: this.attentionPitch },
       expression: this.expression ? { ...this.expression } : null,
       idle: { blend: this.idleBlend, footTap: this.idleFootTap },
       anticipation: this.anticipation,
@@ -216,10 +276,12 @@ export class LabPlayerAnimator {
   }
 
   reset() {
+    this.groundContact?.reset();
     for (const { name } of LAB_PLAYER_JOINTS) {
       this.bones[name].position.copy(this.rig.rest[name]);
       this.bones[name].quaternion.identity();
       this.jointTargets[name].set(0, 0, 0);
+      this.basePose?.[name]?.identity();
     }
     this.gait = this.speed = this.moveBlend = this.airBlend = this.carryBlend = 0;
     this.landing = this.landVelocity = this.turn = this.elapsed = 0;
@@ -241,6 +303,11 @@ export class LabPlayerAnimator {
     this.anticipation = this.idleBlend = this.idleFootTap = 0;
     this.holsterProgress = this.handoffBlend = 0;
     this.carryingRequested = false;
+    this.airAge = 0; this.ascentBlend = 0; this.takeoffLead = 1; this.airbornePhase = 'grounded';
+    this.attentionPitch = this.attentionYaw = this.attentionBlend = 0;
+    this.requestedAttention = { pitch: 0, yaw: 0, active: false };
+    this.reachBlend = 0; this.hasGripTargets = false;
+    this.carryReach = { blend: 0, leftError: null, rightError: null, leftClamped: false, rightClamped: false };
     this.footContact.L = this.footContact.R = 1;
     this.rig.mesh.updateWorldMatrix(true, true);
     this.rig.skeleton.update();
@@ -248,7 +315,7 @@ export class LabPlayerAnimator {
   }
 
   triggerLanding(impact = 4) {
-    this.landVelocity = Math.min(this.landVelocity, -clamp(Math.abs(Number.isFinite(impact) ? impact : 4), 0.5, 14) * 0.10);
+    this.landVelocity = Math.min(this.landVelocity, -clamp(Math.abs(Number.isFinite(impact) ? impact : 4), 0.5, 14) * 0.075);
   }
 
   triggerHit() { this.triggerLanding(2); }
@@ -281,11 +348,43 @@ export class LabPlayerAnimator {
     const iterations = Math.max(1, Math.ceil(dt * 240 - 1e-9));
     const step = dt / iterations;
     const startTime = Number.isFinite(input.elapsed) ? input.elapsed - dt : this.elapsed;
+    // Keep the FK blend independent of the previous frame's IK overlay. Blending
+    // the already corrected pose again would accumulate twist on pickup/drop.
+    for (const { name } of LAB_PLAYER_JOINTS) this.bones[name].quaternion.copy(this.basePose[name]);
+    const targets = input.carryGripTargets;
+    this.hasGripTargets = ['left', 'right'].every(side => targets?.[side]
+      && ['x', 'y', 'z'].every(axis => Number.isFinite(targets[side][axis])));
+    this.rig.mesh.updateWorldMatrix(true, false);
+    for (const side of ['left', 'right']) {
+      if (this.hasGripTargets) {
+        this.gripTargets[side].copy(targets[side]);
+        this.releaseGripLocal[side].copy(targets[side]);
+        this.rig.mesh.worldToLocal(this.releaseGripLocal[side]);
+      } else {
+        // On release the wrists recover with the player instead of reaching
+        // back towards a stale world point while the player runs away.
+        this.gripTargets[side].copy(this.releaseGripLocal[side]);
+        this.rig.mesh.localToWorld(this.gripTargets[side]);
+      }
+    }
+    this.requestedAttention.active = false;
+    if (input.lookTarget && ['x', 'y', 'z'].every(axis => Number.isFinite(input.lookTarget[axis]))) {
+      const localLook = this.rig.mesh.worldToLocal(new THREE.Vector3().copy(input.lookTarget))
+        .sub(new THREE.Vector3(0, 0, -0.66));
+      const yaw = -Math.atan2(localLook.x, localLook.y);
+      this.requestedAttention.active = Math.abs(yaw) < 1.3 && localLook.lengthSq() > .0025;
+      this.requestedAttention.yaw = clamp(yaw, -.28, .28);
+      this.requestedAttention.pitch = clamp(Math.atan2(localLook.z, Math.hypot(localLook.x, localLook.y)), -.18, .22);
+    }
     this.rig.mesh.getWorldScale(this.scaleVector);
     this.modelScale = Math.max(0.1, this.scaleVector.length() / Math.sqrt(3));
     for (let index = 0; index < iterations; index += 1) {
       this.stepPose({ ...input, dt: step, elapsed: startTime + step * (index + 1) });
     }
+    for (const { name } of LAB_PLAYER_JOINTS) this.basePose[name].copy(this.bones[name].quaternion);
+    this.groundContact.update({ dt, root: this.visual.parent, grounded: input.grounded !== false,
+      contact: this.footContact, sampleGround: input.sampleGround, moving: this.moveBlend, speed: this.speed });
+    this.applyCarryReach();
     // Updating the skeleton once per render keeps substeps inexpensive on the
     // original dense model and lets the attached device follow the newest pose.
     this.rig.mesh.updateWorldMatrix(true, true);
@@ -301,6 +400,10 @@ export class LabPlayerAnimator {
     this.elapsed = Number.isFinite(elapsed) ? elapsed : this.elapsed + dt;
     const vy = Number.isFinite(velocity?.y) ? velocity.y : 0;
     if (grounded && !this.previousGrounded) this.triggerLanding(this.lastVerticalSpeed);
+    if (!grounded && this.previousGrounded) { this.airAge = 0; this.takeoffLead = this.gait < 0.5 ? 1 : -1; }
+    this.airAge = grounded ? 0 : this.airAge + dt;
+    this.ascentBlend = damp(this.ascentBlend, smooth(-1.4, 2.6, vy), 10, dt);
+    this.airbornePhase = grounded ? 'grounded' : vy > 2.5 ? 'push_off' : vy > -1.5 ? 'float' : 'prepare_land';
     this.previousGrounded = grounded;
     this.lastVerticalSpeed = vy;
 
@@ -331,8 +434,12 @@ export class LabPlayerAnimator {
     if (this.transitionRemaining === 0) this.locomotionTransition = null;
     this.speed = damp(this.speed, speed, 10, dt);
     this.moveBlend = damp(this.moveBlend, smooth(0.04, 1.5, this.speed), 10, dt);
-    this.airBlend = damp(this.airBlend, grounded && !phase ? 0 : 1, 14, dt);
+    this.airBlend = damp(this.airBlend, grounded ? 0 : 1, 11, dt);
     this.carryBlend = damp(this.carryBlend, carrying ? 1 : 0, 9, dt);
+    // Preserve the last contact targets during a short release blend. Contact
+    // becomes exact once the handoff finishes; a sharp exponential cutoff never
+    // leaves the hands visibly hovering a few millimetres behind the object.
+    this.reachBlend = clamp(this.reachBlend + (carrying && this.hasGripTargets ? 1 : -1) * dt / 0.42, 0, 1);
     this.carryingRequested = !!carrying;
     this.holsterProgress = clamp(this.holsterProgress + (carrying ? 1 : -1) * dt / 0.32, 0, 1);
     this.handoffBlend = Math.sin(this.holsterProgress * Math.PI) ** 2;
@@ -340,6 +447,10 @@ export class LabPlayerAnimator {
     this.weaponBlend = damp(this.weaponBlend, weapon && !carrying ? 1 : 0, 12, dt);
     this.aimBlend = damp(this.aimBlend, aiming && weapon && !carrying ? 1 : 0, 12, dt);
     this.aimPitch = damp(this.aimPitch, clamp(Number.isFinite(aimPitch) ? aimPitch : 0, -0.5, 0.65), 12, dt);
+    this.attentionBlend = damp(this.attentionBlend, this.requestedAttention.active && !aiming && grounded
+      ? Math.max(1 - this.moveBlend, this.carryBlend * .55) : 0, 4, dt);
+    this.attentionYaw = damp(this.attentionYaw, this.requestedAttention.yaw, 6, dt);
+    this.attentionPitch = damp(this.attentionPitch, this.requestedAttention.pitch, 6, dt);
     this.recoil = damp(this.recoil, 0, 17, dt);
     this.turn = damp(this.turn, clamp(Number.isFinite(turnRate) ? turnRate : 0, -3, 3), 8, dt);
     let reach = 0;
@@ -364,9 +475,14 @@ export class LabPlayerAnimator {
       if (expressionTime >= this.expression.duration) this.expression = null;
     }
     const run = smooth(2.5, 5.7, this.speed);
-    const stride = THREE.MathUtils.lerp(0.050, 0.115, run);
+    const stride = THREE.MathUtils.lerp(0.055, 0.105, run);
     const turning = smooth(0.2, 1.8, Math.abs(this.turn)) * (1 - this.moveBlend);
-    const frequency = Math.max(clamp(this.speed / Math.max(0.5, stride * 4 * this.modelScale), 0, 3.2), turning * 1.5);
+    // Cadence is an authored rhythm, independent of the unusually short source
+    // legs. Deriving it from their length produced nine frantic footfalls/s.
+    // Starts lengthen into a relaxed stride; sprint never accelerates the clip
+    // past 2.2 cycles/s. Ground contact is a separate bounded overlay.
+    const frequency = Math.max(smooth(0, .8, this.speed) * clamp(.92 + this.speed * .24, 0, 2.2), turning * .9);
+    this.cadenceHz = frequency;
     this.gait = (this.gait + dt * frequency) % 1;
     // Closed-form damped spring: a soft rebound, independent of frame size.
     const decay = Math.exp(-10.5 * dt), omega = Math.sqrt(260 - 10.5 ** 2);
@@ -381,40 +497,39 @@ export class LabPlayerAnimator {
     this.idleBlend = damp(this.idleBlend, ground * (1 - this.moveBlend) * (1 - turning)
       * (1 - this.aimBlend) * (1 - this.interactionBlend), 5, dt);
     const idleShift = Math.sin(this.elapsed * 1.45) * this.idleBlend;
-    const tapTime = (this.elapsed + 0.6) % 5.8;
-    this.idleFootTap = (tapTime > 3.7 && tapTime < 4.6 ? Math.sin((tapTime - 3.7) / 0.9 * Math.PI * 2) ** 2 : 0)
-      * this.idleBlend * (1 - this.carryBlend);
+    this.idleFootTap = 0;
     const joy = celebrate * ground * (1 - this.aimBlend);
     const hop = Math.sin(clamp(expressionTime / 0.6, 0, 1) * Math.PI) ** 2 * joy;
-    const compression = (0.024 + run * 0.042) * moving + 0.010 * turnStep - this.landing;
+    const cadence = this.gait * Math.PI * 2;
+    // The pelvis rises over the support foot and settles at double support.
+    // Reduce the old permanent squat, keeping bounce in legs and pelvis rather
+    // than changing the visual/root scale or moving the camera.
+    const strideBounce = (0.002 + run * 0.003) * (1 - Math.cos(cadence * 2)) * 0.5;
+    const compression = (0.012 + run * 0.011 - strideBounce) * moving + 0.004 * turnStep - this.landing;
     this.bones.Body.position.copy(this.rig.rest.Body);
-    this.bones.Body.position.z += compression + this.interactionBlend * 0.011 + this.anticipation * 0.014 - hop * 0.012
-      + Math.sin(this.elapsed * 2.1) * 0.0007 * this.idleBlend;
-    this.bones.Body.position.x += idleShift * 0.004;
+    this.bones.Body.position.z += compression + this.interactionBlend * 0.011 + this.anticipation * 0.014 - hop * 0.012;
+    this.bones.Body.position.x += Math.sin(cadence) * moving * (0.0015 + run * 0.001);
     const body = this.jointTargets.Body;
-    body.set(0.035 * moving * this.directionForward + 0.055 * this.inertiaForward * ground
-      + 0.035 * this.carryBlend + this.interactionBlend * 0.055 - this.landing * 0.55,
-      -0.03 * moving * this.directionRight - 0.045 * this.inertiaRight * ground - idleShift * 0.009,
-      Math.sin(this.gait * Math.PI * 2) * 0.016 * moving - this.turn * 0.018);
+    body.set((0.035 + .045 * run) * moving * this.directionForward + 0.085 * this.inertiaForward * ground
+      + 0.05 * this.carryBlend + this.interactionBlend * 0.095 - this.landing * 0.55,
+      -0.025 * moving * this.directionRight - 0.035 * this.inertiaRight * ground,
+      Math.sin(cadence + 0.15) * 0.024 * moving - this.turn * 0.018);
+    body.x += this.airBlend * (0.015 + 0.095 * this.ascentBlend) + this.anticipation * 0.055;
+    body.y += Math.sin(cadence) * moving * 0.014;
     this.jointTargets.Head.set(-body.x * 0.6 - this.aimPitch * this.aimBlend * 0.2 + Math.sin(this.elapsed * 1.7) * 0.004,
       -body.y * 0.65 + curious * 0.065 + joy * Math.sin(expressionTime * 10) * 0.03,
-      -body.z * 0.55 + Math.sin(this.elapsed * 0.85) * 0.055 * this.idleBlend
+      -body.z * 0.65 + Math.sin(this.elapsed * 0.85) * 0.075 * this.idleBlend
         - curious * 0.14 + joy * Math.sin(expressionTime * 9) * 0.055);
     this.jointTargets.Head.x += Math.sin(this.gait * Math.PI * 4) * moving * run * 0.013
       + curious * 0.025 + joy * Math.sin(expressionTime * 12) * 0.025;
+    this.jointTargets.Head.x = THREE.MathUtils.lerp(this.jointTargets.Head.x,
+      this.attentionPitch - body.x * .6, this.attentionBlend);
+    this.jointTargets.Head.z = THREE.MathUtils.lerp(this.jointTargets.Head.z,
+      this.attentionYaw - body.z * .65, this.attentionBlend);
 
     for (const [side, offset, sign] of [['L', 0, -1], ['R', 0.5, 1]]) {
       const cycle = (this.gait + offset) % 1;
-      const planted = cycle < 0.57;
-      let path, lift;
-      if (planted) {
-        path = THREE.MathUtils.lerp(stride, -stride, cycle / 0.57);
-        lift = 0;
-      } else {
-        const t = (cycle - 0.57) / 0.43;
-        path = THREE.MathUtils.lerp(-stride, stride, t * t * (3 - 2 * t));
-        lift = Math.sin(t * Math.PI) ** 1.4 * (0.027 + 0.018 * run);
-      }
+      let { path, lift, planted } = sampleLabFootCycle(cycle, stride, run);
       const turnPath = (path / stride) * sign * Math.sign(this.turn) * 0.021 * turnStep;
       const forward = path * moving * this.directionForward * (this.directionForward < 0 ? 0.82 : 1) + turnPath + 0.015;
       const lateral = path * moving * this.directionRight * 0.65;
@@ -423,32 +538,34 @@ export class LabPlayerAnimator {
       const leg = solveLabLeg(forward, down);
       const legBlend = clamp(moving + turnStep + Math.abs(this.landing) * 8, 0, 1);
       const lateralRoll = clamp(Math.atan2(lateral, Math.max(0.09, down)), -0.21, 0.21);
-      const jumpFold = (phase ? 0.50 : vy > 0 ? 0.42 : 0.20) + this.anticipation * 0.08;
+      // A lead leg rises first; at the apex the trailing knee catches up, then
+      // both feet extend for the landing. Vertical speed is blended across zero
+      // so the jump cannot switch from one frozen pose to another at the apex.
+      const leading = sign * this.takeoffLead;
+      const pushOff = 1 - smooth(0.06, 0.28, this.airAge);
+      const tuck = smooth(.045, .23, this.airAge);
+      const landingReach = smooth(-.5, 9.5, -vy);
+      const jumpFold = .07 + tuck * (.66 - .59 * landingReach)
+        + leading * tuck * (1 - landingReach) * (.14 + .045 * run)
+        - leading * pushOff * .05 + this.anticipation * .10;
       this.jointTargets[`Thigh${side}`].set(leg.hip * legBlend - jumpFold * this.airBlend,
         lateralRoll, sign * 0.012 * moving - this.turn * 0.018 * turnStep);
       this.jointTargets[`Shin${side}`].set(leg.knee * legBlend + jumpFold * 1.75 * this.airBlend, 0, 0);
       this.jointTargets[`Foot${side}`].set(leg.ankle * legBlend - jumpFold * 0.65 * this.airBlend,
         -lateralRoll, this.turn * 0.018 * turnStep);
-      this.footContact[side] = grounded && !phase && (planted || moving + turnStep < 0.05) ? ground : 0;
-      if (this.idleBlend > 0.001) {
-        const tap = side === 'L' ? this.idleFootTap : 0;
-        this.jointTargets[`Thigh${side}`].x -= tap * 0.04;
-        this.jointTargets[`Shin${side}`].x += tap * 0.09;
-        this.jointTargets[`Foot${side}`].x -= tap * 0.08;
-        this.jointTargets[`Thigh${side}`].y -= idleShift * 0.019;
-        this.jointTargets[`Foot${side}`].y += idleShift * 0.019;
-        if (tap > 0.25) this.footContact[side] = 0;
-      }
+      this.footContact[side] = grounded && (planted || moving + turnStep < 0.05) ? ground : 0;
       const swingPhase = (cycle + 0.05) * Math.PI * 2;
       const swing = clamp(Math.sin(swingPhase) * (0.20 + 0.20 * run)
         + Math.sin(swingPhase * 2) * run * 0.025, -0.42, 0.42) * moving
         * (this.directionForward + this.directionRight * 0.35);
-      const idle = Math.sin(this.elapsed * 1.7 + offset) * 0.011;
+      const idle = Math.sin(this.elapsed * 1.7 + offset) * 0.016 + Math.sin(this.elapsed * 0.67 + sign) * 0.006;
       const arm = this.jointTargets[`Arm${side}`];
       const forearm = this.jointTargets[`Forearm${side}`];
       const hand = this.jointTargets[`Hand${side}`];
-      arm.set(swing + idle - this.airBlend * 0.24, sign * 0.04, sign * this.airBlend * 0.10);
-      forearm.set(-0.09 - Math.max(0, -swing) * 0.35 - this.airBlend * 0.18, 0, 0);
+      arm.set(swing + idle - this.airBlend * (0.17 + this.ascentBlend * 0.16)
+        - this.anticipation * 0.11, sign * (0.04 + this.airBlend * 0.025),
+        sign * this.airBlend * (0.07 + (1 - this.ascentBlend) * 0.04));
+      forearm.set(-0.09 - Math.max(0, -swing) * 0.40 - this.airBlend * (0.10 + this.ascentBlend * 0.17), 0, 0);
       hand.set(0.02, 0, side === 'L' ? Math.sin(swingPhase + 0.4) * run * moving * 0.025 : 0);
       if (side === 'L') {
         const wave = joy * (1 - this.carryBlend);
@@ -494,7 +611,7 @@ export class LabPlayerAnimator {
 
     for (const { name } of LAB_PLAYER_JOINTS) {
       this.tempQuaternion.setFromEuler(this.jointTargets[name]);
-      const rate = /Thigh|Shin|Foot/.test(name) ? 38 : name === 'Head' ? 9 : 16;
+      const rate = /Thigh|Shin|Foot/.test(name) ? THREE.MathUtils.lerp(18, 12, this.airBlend) : name === 'Head' ? 8 : 12;
       this.bones[name].quaternion.slerp(this.tempQuaternion, 1 - Math.exp(-rate * dt));
     }
     const directionalGait = Math.abs(this.directionRight) > Math.abs(this.directionForward) * 0.85
@@ -511,6 +628,32 @@ export class LabPlayerAnimator {
               : carrying ? (this.speed > 0.2 ? 'carry_walk' : 'carry_idle')
             : aiming && weapon ? (this.speed > 0.2 ? 'aim_walk' : 'aim_idle') : this.locomotionState;
     if (next !== this.state) { this.state = next; this.onStateChange({ state: next, label: next }); }
+  }
+
+  applyCarryReach() {
+    const blend = smooth(0.01, 0.985, this.reachBlend);
+    this.carryReach.blend = blend;
+    this.carryReach.leftError = this.carryReach.rightError = null;
+    this.carryReach.leftClamped = this.carryReach.rightClamped = false;
+    if (blend < 1e-6) return;
+    this.rig.mesh.updateWorldMatrix(true, true);
+    const body = this.bones.Body;
+    for (const [side, key] of [['L', 'left'], ['R', 'right']]) {
+      const arm = this.bones[`Arm${side}`], forearm = this.bones[`Forearm${side}`], hand = this.bones[`Hand${side}`];
+      const localTarget = body.worldToLocal(this.gripTargets[key].clone());
+      const solved = solveLabArm(arm.position, localTarget, this.rig.rest[`Forearm${side}`], this.rig.rest[`Hand${side}`], side);
+      // Let the relaxed glove turn with its forearm as it embraces the object.
+      // Locking its WORLD orientation counter-twisted the fused cuff by ~55°
+      // when the elbows reached inward, although the wrist position was correct.
+      // Hand position depends on its parents, so a neutral local wrist preserves
+      // exact contact and the authored glove without that compensating twist.
+      arm.quaternion.slerp(solved.arm, blend);
+      forearm.quaternion.slerp(solved.forearm, blend);
+      arm.updateWorldMatrix(true, true);
+      hand.updateWorldMatrix(true, false);
+      this.carryReach[`${key}Error`] = hand.getWorldPosition(new THREE.Vector3()).distanceTo(this.gripTargets[key]);
+      this.carryReach[`${key}Clamped`] = solved.clamped;
+    }
   }
 
   snapCarrierToBody() {

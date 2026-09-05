@@ -30,7 +30,7 @@ export function makeLabFloorMaterial(color = 0xe4e7df) {
 /** Returns mechanism handles; simulation/interaction belongs to LabGame. */
 export function buildLabArchitecture(game) {
   const { scene, materials: m } = game;
-  m.wall.color.set(0xedece4); m.dark.color.set(0x294451); m.trim.color.set(0x607e84);
+  m.wall.color.set(0x91aab2); m.dark.color.set(0x294451); m.trim.color.set(0x607e84);
   m.wall.roughness = .88; m.dark.roughness = .82; m.trim.metalness = .08;
   m.floor = makeLabFloorMaterial();
   const matte = color => new THREE.MeshStandardMaterial({ color, roughness: .83, metalness: 0 });
@@ -47,6 +47,9 @@ export function buildLabArchitecture(game) {
     const mesh = game.box((minX + maxX) / 2, y - thickness / 2, (minZ + maxZ) / 2,
       maxX - minX, thickness, maxZ - minZ, material, { solid: true });
     descriptor.mesh = mesh;
+    if (material === m.floor || material === inset) game.markPortalSurface(mesh,
+      new THREE.Vector3((minX + maxX) / 2, y + .012, (minZ + maxZ) / 2),
+      new THREE.Vector3(0, 1, 0), (maxX - minX) / 2, (maxZ - minZ) / 2);
     return descriptor;
   };
   const signal = points => {
@@ -102,14 +105,15 @@ export function buildLabArchitecture(game) {
   }
   game.box(0, 3.2, 22.2, 24.8, 12.2, .4, m.wall, { solid: true });
   game.box(0, 3.2, -51.2, 24.8, 12.2, .4, m.wall, { solid: true });
-  game.box(0, 9.15, -14.5, 24.8, .3, 73.4, inset, { solid: true });
+  const ceiling = game.box(0, 9.15, -14.5, 24.8, .3, 73.4, inset, { solid: true });
+  game.markPortalSurface(ceiling, new THREE.Vector3(0, 9, -14.5), new THREE.Vector3(0, -1, 0), 12.4, 36.7);
 
   const rooms = [{ center: 9.5, length: 25 }, { center: -14.5, length: 23 }, { center: -38.5, length: 25 }];
   rooms.forEach((room, index) => {
     for (const sign of [-1, 1]) {
       for (const offset of [-7.4, 0, 7.4]) {
         // Solid, comfortably wide relief panels; no dense line mesh or floating furniture.
-        game.box(sign * 11.92, 6.05, room.center + offset, .13, 1.95, 6.8, pastel[index], { camera: false, aim: false });
+      game.box(sign * 11.92, 6.05, room.center + offset, .13, 1.95, 6.8, pastel[index], { camera: false, aim: false });
       }
       game.box(sign * 8.8, 8.91, room.center, 1.1, .14, room.length - 2, pastel[index], { camera: false, aim: false });
     }
@@ -151,27 +155,25 @@ export function buildLabArchitecture(game) {
 
   // Chamber 02: a visible, latched gate, a weight switch, then a real lift.
   for (const x of [-7, 7]) {
-    game.box(x, 3, -15, 10, 6, .2, m.glass, { solid: true, aim: false });
+    game.box(x, 3, -15, 10, 6, .2, m.glass, { solid: true, aim: true });
     game.box(x, 6.09, -15, 10.1, .18, .3, teal, { solid: true, aim: false });
     game.box(x, .1, -15, 10.1, .2, .3, teal, { solid: true, aim: false });
   }
   for (const x of [-2.12, 2.12]) game.box(x, 2.8, -15, .22, 5.6, .38, teal, { solid: true });
   game.box(0, 5.73, -15, 4.4, .26, .4, teal, { solid: true });
-  const barrierMesh = game.box(0, 2.65, -15, 4, 5.3, .18, m.glass.clone(), { solid: true, aim: false });
+  const barrierMesh = game.box(0, 2.65, -15, 4, 5.3, .18, m.glass.clone(), { solid: true, aim: true });
   barrierMesh.material.opacity = .28; barrierMesh.userData.field = true;
+  barrierMesh.visible = false; barrierMesh.userData.collisionProxy = true;
   const barrierCollider = game.colliders.at(-1);
   const barrierArt = game.addProp(20, 4.04, [0, .02, -15.04], 1);
   const barrierIndicator = makeIndicator([0, 5.95, -14.95], AMBER, .19);
   const chargePosition = new THREE.Vector3(-4, 0, -10);
-  const chargeArt = game.addProp(18, 2.05, chargePosition.toArray(), 1);
-  const chargeHeight = new THREE.Box3().setFromObject(chargeArt).getSize(new THREE.Vector3()).y;
-  chargeArt.scale.y *= .14 / Math.max(chargeHeight, .01);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(1.05, .07, 10, 48), new THREE.MeshBasicMaterial({ color: AMBER }));
   ring.rotation.x = -Math.PI / 2; ring.position.copy(chargePosition).y = .17; scene.add(ring);
   const barrierCable = signal([[-4, .085, -10], [-4, .085, -13], [-2.4, .085, -13], [-2.4, .085, -15]]);
   const barrier = { mesh: barrierMesh, collider: barrierCollider, art: barrierArt, indicator: barrierIndicator,
     position: new THREE.Vector3(0, 0, -15), baseY: 2.65, artBaseY: .02, progress: 0, opened: false, links: [barrierCable] };
-  const chargePad = { position: chargePosition, ring, art: chargeArt, links: [barrierCable] };
+  const chargePad = { ...game.addPressurePad(chargePosition, 1, ring), links: [barrierCable] };
 
   const ledgeFloor = floor(-8, -3, -25, -20, 2.2, inset, 2.2);
   game.box(-8.06, 2.6, -22.5, .12, .8, 5, teal, { solid: true });
@@ -196,6 +198,7 @@ export function buildLabArchitecture(game) {
   const lift = { group: liftGroup, mesh: liftMesh, collider: liftCollider, floor: liftFloor, art: liftArt,
     minY: 0, maxY: 2.2, position: new THREE.Vector3(-6, 0, -18.5), progress: 0, indicator: liftIndicator, ledgeFloor };
   game.label('↑', -6, 3.5, -20.14, 1.5, '#669fa4');
+  game.label('X — СБРОС ПАРЫ · ОСТАВЬ ОДИН ПОРТАЛ ПОД ДРУГОМ', -5.4, 3.4, -25.15, 5.2, '#527c86');
 
   const launchPad = game.addProp(21, 2.75, [0, 0, -31.5], 2);
   const launchHeight = new THREE.Box3().setFromObject(launchPad).getSize(new THREE.Vector3()).y;
@@ -204,9 +207,66 @@ export function buildLabArchitecture(game) {
   launchRing.rotation.x = -Math.PI / 2; launchRing.position.set(0, .17, -31.5); scene.add(launchRing);
   game.label('↑', 0, .035, -29.4, 2.2, '#bf8341').rotation.x = -Math.PI / 2;
   const doorLinks = [
-    signal([[4.6, .09, 0], [4.6, .09, -2.65], [2.95, .09, -2.65]]),
+    signal([[3.5, .09, 1.2], [3.5, .09, -2.65], [2.95, .09, -2.65]]),
     signal([[-5, 2.29, -23], [-3.13, 2.29, -23], [-3.13, 2.29, -25.23], [-3.13, .09, -25.23], [-2.95, .09, -25.7]]),
     signal([[0, .09, -44], [0, .09, -46.55], [2.95, .09, -46.55]]),
   ];
+  // A small optional climbing nook gives the third-person character room to
+  // play, without putting furniture in the critical bridge approach.
+  const tiles = [];
+  for (const x of [6.8, 9.0]) for (const z of [16.4, 18.6]) {
+    const tile = game.addProp(23, 2.18, [x, .018, z], 0);
+    const bounds = new THREE.Box3().setFromObject(tile);
+    const collider = game.collisionProxy(bounds);
+    tiles.push({ model: tile, collider });
+  }
+  const tileTop = Math.max(...tiles.map(tile => tile.collider.box.max.y));
+  const table = game.addProp(14, 1.1, [7.8, tileTop, 15.5], 0, 0, { height: true });
+  const tableBounds = new THREE.Box3().setFromObject(table), tableHeight = tableBounds.max.y - tableBounds.min.y;
+  const tableTop = tableBounds.max.y;
+  const topBox = new THREE.Box3(new THREE.Vector3(tableBounds.min.x, tableTop - .12, tableBounds.min.z), tableBounds.max.clone());
+  const tableCollider = game.collisionProxy(topBox);
+  const tableCenter = tableBounds.getCenter(new THREE.Vector3());
+  game.collisionProxy(new THREE.Box3(new THREE.Vector3(tableCenter.x - .22, tileTop, tableCenter.z - .22),
+    new THREE.Vector3(tableCenter.x + .22, tableTop - .12, tableCenter.z + .22)));
+  const chair = game.addProp(13, 1.48, [5.55, 0, 17.1], 0, Math.PI / 2, { height: true });
+  const chairBounds = new THREE.Box3().setFromObject(chair), chairCenter = chairBounds.getCenter(new THREE.Vector3());
+  const seatY = .69;
+  game.collisionProxy(new THREE.Box3(new THREE.Vector3(chairCenter.x - .43, seatY - .12, chairCenter.z - .43),
+    new THREE.Vector3(chairCenter.x + .43, seatY, chairCenter.z + .43)));
+  game.collisionProxy(new THREE.Box3(new THREE.Vector3(chairCenter.x + .29, seatY, chairCenter.z - .43),
+    new THREE.Vector3(chairCenter.x + .43, chairBounds.max.y, chairCenter.z + .43)));
+  game.collisionProxy(new THREE.Box3(new THREE.Vector3(chairCenter.x - .15, 0, chairCenter.z - .15),
+    new THREE.Vector3(chairCenter.x + .15, seatY, chairCenter.z + .15)));
+
+  const placeRamp = (id, x, z, width, depth, highY, stage) => {
+    const model = game.addProp(id, depth, [x, 0, z], stage);
+    model.updateWorldMatrix(true, true);
+    const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+    const totalHeight = id === 25 ? highY * 1.27 : highY;
+    model.scale.set(width / size.x, totalHeight / size.y, depth / size.z);
+    const ramp = { id: model.uuid, model, minX: x - width / 2, maxX: x + width / 2,
+      minZ: z - depth / 2, maxZ: z + depth / 2, lowY: 0, highY, highAt: 'minZ' };
+    game.ramps.push(ramp);
+    // Only the raised rear lip needs a box. The ramp itself is a true slope.
+    if (id === 25) game.collisionProxy(new THREE.Box3(new THREE.Vector3(ramp.minX, highY, ramp.minZ),
+      new THREE.Vector3(ramp.maxX, totalHeight, ramp.minZ + .11)));
+    game.cameraBlockers.push(model); game.aimBlockers.push(model);
+    return ramp;
+  };
+  const nookRamp = placeRamp(25, 9.35, 14.1, 1.75, 3.4, 1.20, 0);
+  // Its upper lip joins a lookout; climbing is optional and never traps cargo.
+  floor(8.47, 10.23, 11.4, 12.43, 1.53, inset, 1.53);
+  const slope = placeRamp(27, -9.7, -22.4, 3.35, 5.2, 2.2, 1);
+  floor(-11.4, -8, -25.5, -25, 2.2, inset, 2.2);
+  floor(-8.05, -7.8, -25, -24.6, 2.2, inset, 2.2);
+  for (const [x, y, z, yaw, stage] of [[10.2, 1.53, 11.7, Math.PI / 2, 0], [-10.9, 2.2, -25.4, 0, 1], [-8.03, 2.2, -22.5, Math.PI / 2, 1]]) {
+    const rail = game.addProp(26, 1.08, [x, y, z], stage, yaw, { height: true });
+    game.collisionProxy(new THREE.Box3().setFromObject(rail));
+  }
+  game.exploration = { table: { model: table, collider: tableCollider, position: table.position.clone(), top: tableTop },
+    chair: { model: chair, seatY, position: chair.position.clone() }, ramps: [nookRamp, slope], tiles };
+  game.label('ПОПРОБУЙ ЗАПРЫГНУТЬ', 7.7, 2.6, 14.8, 4.8, '#426b7d');
+  game.label('БЕЛОЕ: ПОРТАЛЫ · ЦВЕТНОЕ: НЕЛЬЗЯ', 0, 4.35, 21.91, 9.2, '#486579', Math.PI);
   return { bridges, terminals, lift, barrier, chargePad, launchPad, launchRing, recoveryFloors, doorLinks };
 }

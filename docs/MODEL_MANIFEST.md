@@ -2,7 +2,7 @@
 
 ## Scope
 
-The active lab ships 14 models. Player 01, cargo 02, and portal gun 11 keep their original GLB bytes. Old environment models 03–10 and their old thumbnails are removed from the active tree; they remain recoverable through Git history. New models use stable IDs 12–22 in `src/game/labAssets.js`.
+The active lab ships 19 models. Player 01, cargo 02, and portal gun 11 keep their original GLB bytes. Old environment models 03–10 and their old thumbnails are removed from the active tree; they remain recoverable through Git history. Environment models use stable IDs 12–27 in `src/game/labAssets.js`.
 
 The user-uploaded originals are unchanged. The new runtime environment copies use normal- and UV-aware Meshoptimizer simplification, locked topological borders, a 0.004 appearance-error bound, and Draco encoding (position 16 bits, normal 12 bits, UV 14 bits). All embedded base-color, normal and material texture image bytes are preserved, verified by SHA-256 before/after processing. No texture baking, atlas replacement or hole-filling was applied.
 
@@ -64,3 +64,17 @@ The 11 source environment models contain 8,245,912 triangles. Runtime copies con
 Each source and runtime version was rendered at 768×768 from the same elevated three-quarter camera with its complete mesh and per-pixel base-color texture sampling. Source and runtime silhouettes were inspected side by side. The first position-only simplification trial produced shading creases in broad white panels; it was rejected and replaced by normal/UV-aware simplification.
 
 The images in `public/model-screens/model-12.png` through `model-22.png` show the final runtime models. They are 3D renders, not generated concept art. `public/gallery.html` provides individual full-size image links; `public/model-screens/model-catalog.png` contains all 14 current assets. Asset 20 has a central dark opening in the uploaded mesh itself; it is present in both source and runtime renders.
+
+## New structural modules — IDs 23–27
+
+These five models are byte-identical copies of the latest user uploads. Their source GLBs, UVs, texture image bytes and topology are preserved. Each source is a single static mesh with no skin or authored animations. The source node applies an X-axis quarter turn: after loading they are already Y-up. Ramps rise toward local −Z. The 25 ramp has a lip at its high end; the 27 ramp is the continuous walking/cargo surface.
+
+| ID | Object | Runtime file | Source triangles | MiB | Source = runtime SHA-256 |
+|---:|---|---|---:|---:|---|
+| 23 | Напольная плита | `model-23-floor-tile.glb` | 750,000 | 1.72 | `50bd0401d3b78c6f255e0675f03162326307d720b3d0de9f902b323930e86db1` |
+| 24 | Стенная панель | `model-24-wall-panel.glb` | 749,984 | 1.74 | `d2749e11a94f444e4334dafc1606b0bf2e1be06d93ccb2a3505a5a562e23b419` |
+| 25 | Пандус с бортиком | `model-25-ramp-lipped.glb` | 750,050 | 1.97 | `aee3afcc88b9e3425e04c4cc115cf2133f51afcf186abd0c2e4fe312d8cddcba` |
+| 26 | Секция перил | `model-26-railing.glb` | 750,000 | 1.66 | `343b8eb3caf96cfd126a0dedccea3e91f1dcf65cb75f4f1b82e562e248235bb6` |
+| 27 | Широкий пандус | `model-27-ramp-wide.glb` | 750,000 | 1.93 | `aa14cb98882852cab7fa39a2787c5b8e32c4ee0a0f2bf8461750fddb0d8e9743` |
+
+Rendered separately from the actual GLB in Three.js at 768×768: `public/model-screens/model-23.png` through `model-27.png`. The source railing includes a small red fragment below the rail, which is preserved. These scans contain unusually high face counts for flat structural pieces; repeated instancing should share geometry and use a reviewed runtime LOD before mass placement.

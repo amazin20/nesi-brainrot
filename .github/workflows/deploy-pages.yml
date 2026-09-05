@@ -2,10 +2,7 @@ name: Deploy game to GitHub Pages
 
 on:
   push:
-    # The rebuild branch is an explicit review deployment. It lets the visual
-    # gate run in the real GitHub Pages/WebGL environment without merging the
-    # unapproved animation work into main.
-    branches: [main, player-animation-rebuild-v2]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -32,6 +29,18 @@ jobs:
         run: npm ci
       - name: Test and build
         run: npm run check
+      - name: Check full route on real model geometry
+        run: node scripts/lab-journey.mjs
+      - name: Record deployed revision
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          fs.writeFileSync('dist/build-info.json', JSON.stringify({
+            commit: process.env.GITHUB_SHA,
+            repository: process.env.GITHUB_REPOSITORY,
+            run: process.env.GITHUB_RUN_ID
+          }, null, 2) + '\n');
+          NODE
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact

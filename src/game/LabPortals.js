@@ -5,13 +5,150 @@ const HALF_TURN = new THREE.Quaternion().setFromAxisAngle(WORLD_UP, Math.PI);
 export const PORTAL_HALF_WIDTH = 1.18;
 export const PORTAL_HALF_HEIGHT = 1.58;
 const PORTAL_CLIP_OFFSET = 0.025;
+const PORTAL_OUTER_SCALE = 1.10;
+
+function boxCorners(box) {
+  const result = [];
+  for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+    result.push(new THREE.Vector3(x, y, z));
+  }
+  return result;
+}
+
+function boxInPortalFrame(frame, box) {
+  const inverse = frame.quaternion.clone().invert();
+  return new THREE.Box3().setFromPoints(boxCorners(box).map(point => point.sub(frame.position).applyQuaternion(inverse)));
+}
+
+/** Does a world-space box occupy the aperture within a signed depth interval?
+ * Used both for placement clearance and for identifying a backing wall. */
+export function portalIntersectsBox(frame, box, minDepth = -0.7, maxDepth = 0.08, padding = 0) {
+  if (!box || box.isEmpty()) return false;
+  // Reject on the box's own axes before expanding it into portal space. A long
+  // room wall becomes an enormous local AABB under a diagonal floor portal and
+  // used to block an opening several metres away. The ellipse's support on an
+  // axis is exact; adding the depth interval gives its full clearance prism.
+  const portalX = new THREE.Vector3(1, 0, 0).applyQuaternion(frame.quaternion);
+  const portalY = new THREE.Vector3(0, 1, 0).applyQuaternion(frame.quaternion);
+  const middleDepth = (minDepth + maxDepth) / 2;
+  const halfDepth = Math.abs(maxDepth - minDepth) / 2;
+  for (const axis of ['x', 'y', 'z']) {
+    const center = frame.position[axis] + frame.normal[axis] * middleDepth;
+    const extent = Math.hypot((frame.width + padding) * portalX[axis], (frame.height + padding) * portalY[axis])
+      + Math.abs(frame.normal[axis]) * halfDepth;
+    if (center + extent < box.min[axis] || center - extent > box.max[axis]) return false;
+  }
+  const local = boxInPortalFrame(frame, box);
+  if (local.max.z < minDepth || local.min.z > maxDepth) return false;
+  const x = THREE.MathUtils.clamp(0, local.min.x, local.max.x);
+  const y = THREE.MathUtils.clamp(0, local.min.y, local.max.y);
+  return (x / (frame.width + padding)) ** 2 + (y / (frame.height + padding)) ** 2 <= 1;
+}
+
+/** Identifies the thin panel and wall directly behind it. A floor crossing the
+ * aperture's lower edge or a freestanding obstacle must stay collidable. */
+export function portalBacksCollider(frame, box, maxDepth = .7) {
+  if (!box || box.isEmpty()) return false;
+  const local = boxInPortalFrame(frame, box);
+  return local.max.z <= .08 && local.max.z >= -maxDepth && local.min.z < .08
+    && portalIntersectsBox(frame, box, -maxDepth, .08);
+}
+
+/** True only when coplanar portal rims overlap. Separating-axis tests also
+ * support differently oriented floor/ceiling panels without a centre-ID rule. */
+export function portalFramesOverlap(a, b, gap = 0.06) {
+  if (!a || !b || Math.abs(a.normal.dot(b.normal)) < 0.995) return false;
+  if (Math.abs(b.position.clone().sub(a.position).dot(a.normal)) > 0.12) return false;
+  const inverse = a.quaternion.clone().invert();
+  const outlines = [a, b].map(frame => Array.from({ length: 64 }, (_, i) => {
+    const angle = i * Math.PI / 32;
+    return new THREE.Vector3(Math.cos(angle) * (frame.width * PORTAL_OUTER_SCALE + gap / 2),
+      Math.sin(angle) * (frame.height * PORTAL_OUTER_SCALE + gap / 2), 0)
+      .applyQuaternion(frame.quaternion).add(frame.position).sub(a.position).applyQuaternion(inverse);
+  }));
+  for (const outline of outlines) for (let i = 0; i < outline.length; i++) {
+    const edge = outline[(i + 1) % outline.length].clone().sub(outline[i]);
+    const axis = new THREE.Vector2(-edge.y, edge.x).normalize();
+    const ranges = outlines.map(points => {
+      const projected = points.map(point => point.x * axis.x + point.y * axis.y);
+      return [Math.min(...projected), Math.max(...projected)];
+    });
+    if (ranges[0][1] <= ranges[1][0] || ranges[1][1] <= ranges[0][0]) return false;
+  }
+  return true;
+}
+
+/** Planar surface metadata: world `center`, world `normal`, optional world
+ * `portalUp`, and optional `portalBounds: { halfWidth, halfHeight }`. Without
+ * explicit bounds the mesh's transformed geometry supplies them. */
+export function resolvePortalPlacement(panel, hitPoint, { otherPortal = null, blockers = [], margin = 0.02, clampToFit = true, preferredUp } = {}) {
+  const metadata = panel?.userData;
+  if (!metadata?.portalable || metadata.portalForbidden) return { ok: false, reason: 'forbidden' };
+  const movingFrame = typeof metadata.portalFrame === 'function' ? metadata.portalFrame() : null;
+  const data = movingFrame ? { ...metadata, center: movingFrame.center, normal: movingFrame.normal,
+    portalUp: movingFrame.up, portalBounds: { halfWidth: movingFrame.halfWidth, halfHeight: movingFrame.halfHeight } } : metadata;
+  if (!data.normal || !data.center) return { ok: false, reason: 'surface' };
+  // Surface bounds stay in the authored panel frame. Rotating a floor portal
+  // must not rotate the rectangular panel's bounds along with the aperture.
+  const surfaceFrame = makePortalFrame(data.center, data.normal, data.portalUp);
+  const frame = makePortalFrame(data.center, data.normal, preferredUp || data.portalUp);
+  let bounds;
+  if (data.portalBounds) {
+    const { halfWidth, halfHeight } = data.portalBounds;
+    if (!(halfWidth > 0 && halfHeight > 0)) return { ok: false, reason: 'surface' };
+    bounds = { minX: -halfWidth, maxX: halfWidth, minY: -halfHeight, maxY: halfHeight };
+  } else {
+    panel.updateWorldMatrix(true, false);
+    panel.geometry?.computeBoundingBox();
+    if (!panel.geometry?.boundingBox) return { ok: false, reason: 'surface' };
+    const inverse = surfaceFrame.quaternion.clone().invert();
+    const points = boxCorners(panel.geometry.boundingBox).map(point => point.applyMatrix4(panel.matrixWorld).sub(surfaceFrame.position).applyQuaternion(inverse));
+    const box = new THREE.Box3().setFromPoints(points);
+    bounds = { minX: box.min.x, maxX: box.max.x, minY: box.min.y, maxY: box.max.y };
+  }
+  const relative = surfaceFrame.quaternion.clone().invert().multiply(frame.quaternion);
+  const apertureX = new THREE.Vector3(1, 0, 0).applyQuaternion(relative);
+  const apertureY = new THREE.Vector3(0, 1, 0).applyQuaternion(relative);
+  // Exact support of an ellipse on each boundary normal, including diagonal
+  // floor placements. Bounding the rotated rectangle needlessly rejects fits.
+  const halfWidth = Math.hypot(frame.width * apertureX.x, frame.height * apertureY.x) * PORTAL_OUTER_SCALE + margin;
+  const halfHeight = Math.hypot(frame.width * apertureX.y, frame.height * apertureY.y) * PORTAL_OUTER_SCALE + margin;
+  const minX = bounds.minX + halfWidth; const maxX = bounds.maxX - halfWidth;
+  const minY = bounds.minY + halfHeight; const maxY = bounds.maxY - halfHeight;
+  if (minX > maxX + 1e-8 || minY > maxY + 1e-8) return { ok: false, reason: 'too-small' };
+  const local = (hitPoint || data.center).clone().sub(surfaceFrame.position).applyQuaternion(surfaceFrame.quaternion.clone().invert());
+  if (!local.toArray().every(Number.isFinite)) return { ok: false, reason: 'surface' };
+  // Only hits on this panel can be adjusted. Never jump to a remote panel or
+  // replace the hit point with a fixed marker in the centre of the room.
+  if (local.x < bounds.minX - .02 || local.x > bounds.maxX + .02 || local.y < bounds.minY - .02 || local.y > bounds.maxY + .02 || Math.abs(local.z) > .2) {
+    return { ok: false, reason: 'outside' };
+  }
+  const x = THREE.MathUtils.clamp(local.x, minX, maxX); const y = THREE.MathUtils.clamp(local.y, minY, maxY);
+  const adjusted = Math.abs(x - local.x) > 1e-7 || Math.abs(y - local.y) > 1e-7;
+  if (!clampToFit && adjusted) return { ok: false, reason: 'edge' };
+  frame.position.add(new THREE.Vector3(x, y, 0).applyQuaternion(surfaceFrame.quaternion));
+  frame.surfaceId = panel.uuid;
+  if (portalFramesOverlap(frame, otherPortal)) return { ok: false, reason: 'overlap' };
+  for (const blocker of blockers) {
+    const mesh = blocker.mesh || blocker;
+    if (mesh === panel || blocker.enabled === false || mesh.userData?.portalClearance === false) continue;
+    const box = blocker.box || new THREE.Box3().setFromObject(mesh);
+    // Supporting walls are behind the plane. The first 8 cm are a skin allowance;
+    // a pillar or closed door in front still prevents an unusable opening.
+    if (portalIntersectsBox(frame, box, .08, .85)) return { ok: false, reason: 'obstructed' };
+  }
+  return { ok: true, frame, position: frame.position, normal: frame.normal, adjusted, bounds,
+    anchor: movingFrame?.anchor || panel };
+}
 
 /** The normal always points out of the supporting wall and into the room. */
-export function makePortalFrame(position, normal) {
+export function makePortalFrame(position, normal, preferredUp = WORLD_UP) {
   const z = normal.clone();
   if (z.lengthSq() < 1e-10) throw new Error('A portal needs a nonzero surface normal');
   z.normalize();
-  const up = Math.abs(z.dot(WORLD_UP)) > 0.99 ? new THREE.Vector3(0, 0, 1) : WORLD_UP;
+  const requestedUp = (preferredUp || WORLD_UP).clone().normalize();
+  const fallbackUp = Math.abs(z.dot(WORLD_UP)) > 0.99 ? new THREE.Vector3(0, 0, 1) : WORLD_UP;
+  const up = requestedUp.lengthSq() < .5 || Math.abs(z.dot(requestedUp)) > 0.99 ? fallbackUp : requestedUp;
   const x = up.clone().cross(z).normalize();
   const y = z.clone().cross(x).normalize();
   return {
@@ -23,6 +160,13 @@ export function makePortalFrame(position, normal) {
 
 export function portalRotation(entry, exit, target = new THREE.Quaternion()) {
   return target.copy(exit.quaternion).multiply(HALF_TURN).multiply(entry.quaternion.clone().invert()).normalize();
+}
+
+/** A rigid transform shared by actors, cargo and every state in the camera rig. */
+export function portalTransformMatrix(entry, exit, target = new THREE.Matrix4()) {
+  const rotation = portalRotation(entry, exit);
+  const translation = exit.position.clone().sub(entry.position.clone().applyQuaternion(rotation));
+  return target.compose(translation, rotation, new THREE.Vector3(1, 1, 1));
 }
 
 export function transformPortalPoint(point, entry, exit, target = new THREE.Vector3()) {
@@ -42,17 +186,49 @@ export function pointInsidePortal(frame, point, radius = 0) {
 }
 
 /** Swept front-to-back crossing, independent of camera and frame-rate. */
-export function portalCrossing(entry, exit, position, previousPosition, velocity, radius = 0.45) {
-  const previousDistance = previousPosition.clone().sub(entry.position).dot(entry.normal);
+export function portalCrossing(entry, exit, position, previousPosition, velocity, radius = 0.45,
+  { exitClearance = radius + .025, previousEntry = entry } = {}) {
+  // The actor and its support both move during a physics step. Testing the old
+  // actor against today's plane misses a releasing pressure pad that rises past
+  // the old actor centre before gravity advances the body.
+  const previousDistance = previousPosition.clone().sub(previousEntry.position).dot(previousEntry.normal);
   const currentDistance = position.clone().sub(entry.position).dot(entry.normal);
   if (previousDistance <= 0 || currentDistance > 0) return null;
-  const crossingPoint = previousPosition.clone().lerp(position, previousDistance / (previousDistance - currentDistance));
-  if (!pointInsidePortal(entry, crossingPoint, radius)) return null;
+  let crossingFraction = previousDistance / (previousDistance - currentDistance);
+  const crossingFrame = { position: new THREE.Vector3(), normal: new THREE.Vector3(),
+    quaternion: new THREE.Quaternion(), width: entry.width, height: entry.height };
+  const interpolateFrame = fraction => {
+    crossingFrame.position.copy(previousEntry.position).lerp(entry.position, fraction);
+    crossingFrame.quaternion.copy(previousEntry.quaternion).slerp(entry.quaternion, fraction);
+    crossingFrame.normal.set(0, 0, 1).applyQuaternion(crossingFrame.quaternion);
+    return crossingFrame;
+  };
+  // Translation has a linear signed-distance sweep; a rotating panel does not.
+  // Solve against the interpolated orientation without widening the aperture or
+  // accepting an actor that was already behind the plane last physics step.
+  if (Math.abs(previousEntry.quaternion.dot(entry.quaternion)) < 1 - 1e-12) {
+    let before = 0, after = 1;
+    const samplePoint = new THREE.Vector3();
+    for (let i = 0; i < 24; i++) {
+      const middle = (before + after) / 2;
+      interpolateFrame(middle);
+      const distance = samplePoint.copy(previousPosition).lerp(position, middle)
+        .sub(crossingFrame.position).dot(crossingFrame.normal);
+      if (distance > 0) before = middle;
+      else after = middle;
+    }
+    crossingFraction = (before + after) / 2;
+  }
+  const crossingPoint = previousPosition.clone().lerp(position, crossingFraction);
+  if (!pointInsidePortal(interpolateFrame(crossingFraction), crossingPoint, radius)) return null;
   const result = transformPortalPoint(position, entry, exit);
+  const unadjustedPosition = result.clone();
   const exitDistance = result.clone().sub(exit.position).dot(exit.normal);
-  result.addScaledVector(exit.normal, Math.max(0, radius + 0.10 - exitDistance));
+  const exitOffset = exit.normal.clone().multiplyScalar(Math.max(0, exitClearance - exitDistance));
+  result.add(exitOffset);
   return {
     position: result,
+    unadjustedPosition, exitOffset, crossingPoint, crossingFraction,
     velocity: transformPortalDirection(velocity, entry, exit),
     rotation: portalRotation(entry, exit),
   };
@@ -185,6 +361,8 @@ export class LabPortals {
     this.renderer = renderer;
     this.camera = camera;
     this.portals = [null, null];
+    this.physicsFrames = null;
+    this.committedPhysicsFrames = null;
     this.maxResolution = maxResolution;
     this.recursion = recursion;
     const options = targetOptions(renderer, samples);
@@ -198,10 +376,81 @@ export class LabPortals {
 
   get ready() { return this.portals.every(Boolean); }
 
-  place(index, position, normal) {
+  _physicsSnapshot(frame) {
+    return frame ? { frame, pose: {
+      position: frame.position.clone(), normal: frame.normal.clone(), quaternion: frame.quaternion.clone(),
+      width: frame.width, height: frame.height,
+    } } : null;
+  }
+
+  /** Once per fixed physics step, BEFORE moving mechanisms. Rendering and
+   * multiple actor queries may sync world transforms but never change these
+   * snapshots; player and cargo must sweep over the same time interval. The
+   * last committed physics pose takes precedence over an interpolated render
+   * anchor. For newly placed portals restore mechanism poses to physics time
+   * before this call, since they do not have a previous committed frame yet. */
+  beginPhysicsStep() {
+    this.syncMovingSurfaces();
+    this.physicsFrames = this.portals.map((frame, index) => {
+      const committed = this.committedPhysicsFrames?.[index];
+      return committed?.frame === frame ? committed : this._physicsSnapshot(frame);
+    });
+  }
+
+  /** Commit after mechanisms and every actor finish their fixed step, before
+   * interpolation changes animated model transforms for rendering. */
+  endPhysicsStep() {
+    this.syncMovingSurfaces();
+    this.committedPhysicsFrames = this.portals.map(frame => this._physicsSnapshot(frame));
+  }
+
+  placeOnPanel(index, panel, hitPoint, options = {}) {
     if (index !== 0 && index !== 1) throw new Error('Portal index must be 0 or 1');
+    this.syncMovingSurfaces();
+    const placement = resolvePortalPlacement(panel, hitPoint, { ...options, otherPortal: this.portals[1 - index] });
+    if (!placement.ok) return placement;
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(placement.frame.quaternion);
+    const frame = this.place(index, placement.position, placement.normal, up);
+    frame.surfaceId = panel.uuid;
+    this.attachToSurface(index, placement.anchor);
+    return { ...placement, frame };
+  }
+
+  /** Attach in object space, so a pressing pad or rotating panel carries its
+   * aperture with the same transform as the real model and collision surface. */
+  attachToSurface(index, surface) {
+    const frame = this.portals[index];
+    if (!frame || !surface?.isObject3D) return false;
+    surface.updateWorldMatrix(true, false);
+    const inverse = surface.matrixWorld.clone().invert();
+    frame.anchor = {
+      object: surface,
+      position: frame.position.clone().applyMatrix4(inverse),
+      normal: frame.normal.clone().transformDirection(inverse),
+      up: new THREE.Vector3(0, 1, 0).applyQuaternion(frame.quaternion).transformDirection(inverse),
+    };
+    return true;
+  }
+
+  syncMovingSurfaces() {
+    for (const frame of this.portals) {
+      if (!frame?.anchor) continue;
+      const anchor = frame.anchor;
+      anchor.object.updateWorldMatrix(true, false);
+      const matrix = anchor.object.matrixWorld;
+      const updated = makePortalFrame(anchor.position.clone().applyMatrix4(matrix),
+        anchor.normal.clone().transformDirection(matrix), anchor.up.clone().transformDirection(matrix));
+      frame.position.copy(updated.position); frame.normal.copy(updated.normal); frame.quaternion.copy(updated.quaternion);
+      frame.group.position.copy(frame.position).addScaledVector(frame.normal, .036);
+      frame.group.quaternion.copy(frame.quaternion);
+      frame.group.updateMatrixWorld(true);
+    }
+  }
+
+  place(index, position, normal, preferredUp) {
+    if (index !== 0 && index !== 1) throw new Error('Portal index must be 0 or 1');
+    const frame = makePortalFrame(position, normal, preferredUp);
     this._remove(index);
-    const frame = makePortalFrame(position, normal);
     const color = index === 0 ? 0x38bcff : 0xffb74b;
     const group = new THREE.Group();
     group.name = index === 0 ? 'Lab aperture A' : 'Lab aperture B';
@@ -225,6 +474,7 @@ export class LabPortals {
     this.scene.add(group);
     Object.assign(frame, { group, surface, rim, halo });
     this.portals[index] = frame;
+    if (this.physicsFrames) this.physicsFrames[index] = this._physicsSnapshot(frame);
     return frame;
   }
 
@@ -237,6 +487,8 @@ export class LabPortals {
       object.material?.dispose();
     });
     this.portals[index] = null;
+    if (this.physicsFrames) this.physicsFrames[index] = null;
+    if (this.committedPhysicsFrames) this.committedPhysicsFrames[index] = null;
   }
 
   clear() { this._remove(0); this._remove(1); }
@@ -253,16 +505,22 @@ export class LabPortals {
     return this.ready ? transformPortalDirection(direction, this.portals[entryIndex], this.portals[1 - entryIndex], target) : target.copy(direction);
   }
 
-  tryTeleport(position, previousPosition, velocity, radius = 0.45) {
+  tryTeleport(position, previousPosition, velocity, radius = 0.45, options = {}) {
     if (!this.ready) return null;
+    this.syncMovingSurfaces();
     for (let entryIndex = 0; entryIndex < 2; entryIndex++) {
-      const result = portalCrossing(this.portals[entryIndex], this.portals[1 - entryIndex], position, previousPosition, velocity, radius);
+      const entry = this.portals[entryIndex];
+      const previous = this.physicsFrames?.[entryIndex];
+      const previousEntry = previous?.frame === entry ? previous.pose : entry;
+      const result = portalCrossing(entry, this.portals[1 - entryIndex], position, previousPosition, velocity, radius,
+        { previousEntry, ...options });
       if (result) return { ...result, entryIndex, exitIndex: 1 - entryIndex };
     }
     return null;
   }
 
   update(time = 0) {
+    this.syncMovingSurfaces();
     this.portals.forEach((frame) => {
       if (!frame) return;
       frame.surface.material.uniforms.time.value = time;
@@ -280,7 +538,9 @@ export class LabPortals {
     target.scale.set(1, 1, 1);
     target.updateMatrixWorld(true);
     // A nested camera needs a fresh projection, not the preceding exit plane.
-    target.projectionMatrix.copy(this.camera.projectionMatrix);
+    // The main eye may itself still use an exit plane after its player crosses.
+    // A fresh optical projection avoids composing two unrelated clip planes.
+    target.updateProjectionMatrix();
     applyPortalObliqueClipping(target, exit);
     return target;
   }

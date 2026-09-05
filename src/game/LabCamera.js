@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { portalTransformMatrix, applyPortalObliqueClipping } from './LabPortals.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+const IDENTITY = new THREE.Quaternion();
 const SAMPLE_OFFSETS = [
   [0, 0], [1, 0], [-1, 0], [0, 1], [0, -1],
   [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2],
@@ -22,13 +24,14 @@ function spring(value, velocity, goal, frequency, dt) {
 /**
  * Third-person camera. `target` is the player's world-space foot position.
  * Keep the blockers array itself alive: moving doors / added walls may share it.
- * Call reset after spawning, or pass teleported when position is discontinuous.
+ * Call reset after spawning; linked passages use applyPortalTransform.
  * This module never changes player meshes, materials, or the renderer.
  */
 export class LabCamera {
-  constructor({ camera, blockers = [] }) {
+  constructor({ camera, blockers = [], isBlocker = () => true }) {
     this.camera = camera;
     this.blockers = blockers;
+    this.isBlocker = isBlocker;
     this.focus = new THREE.Vector3();
     this.focusVelocity = new THREE.Vector3();
     this.lastTarget = new THREE.Vector3();
@@ -45,6 +48,11 @@ export class LabCamera {
     this.castOrigin = new THREE.Vector3();
     this.raycaster = new THREE.Raycaster();
     this.euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    this.orbitQuaternion = new THREE.Quaternion();
+    this.portalOrientation = new THREE.Quaternion();
+    this.portalUpOrientation = new THREE.Quaternion();
+    this.viewUp = UP.clone();
+    this.portalExit = null;
     this.yaw = 0;
     this.pitch = -0.2;
     this.yawVelocity = 0;
@@ -52,6 +60,8 @@ export class LabCamera {
     this.distance = 6.5;
     this.distanceVelocity = 0;
     this.fovVelocity = 0;
+    this.aimBlend = 0;
+    this.aimBlendVelocity = 0;
     this.initialized = false;
     this.obstructed = false;
   }
@@ -60,17 +70,67 @@ export class LabCamera {
     this.focus.copy(target).y += 1.32;
     this.lastTarget.copy(target);
     this.focusVelocity.set(0, 0, 0);
+    this.portalOrientation.identity();
+    this.portalUpOrientation.identity();
+    this.portalExit = null;
     this.yaw = yaw;
-    this.pitch = THREE.MathUtils.clamp(pitch, -0.72, 0.3);
+    this.pitch = THREE.MathUtils.clamp(pitch, -1.15, 1.15);
     this.yawVelocity = 0;
     this.pitchVelocity = 0;
     this.distance = 6.5;
     this.distanceVelocity = 0;
     this.fovVelocity = 0;
+    this.aimBlend = 0;
+    this.aimBlendVelocity = 0;
     this.camera.fov = 62;
     this.camera.updateProjectionMatrix();
     this.initialized = true;
     return this.update({ dt: 0, target, yaw, pitch });
+  }
+
+  /** Carry the live rig through the same rigid mapping as the visible portal
+   * camera. Respawns use reset(); portals preserve spring momentum, aim, FOV
+   * and boom length. Any capsule safety correction is followed by the existing
+   * focus spring rather than added as an instantaneous full-screen translation.
+   * `target` is the final destination foot position after physical clearance.
+   * The returned yaw/pitch replace the game's orbit controls exactly once. */
+  applyPortalTransform(entryOrMatrix, exit, { target, yaw = this.yaw, pitch = this.pitch, clipExit = true } = {}) {
+    const matrix = entryOrMatrix?.isMatrix4 ? entryOrMatrix : portalTransformMatrix(entryOrMatrix, exit);
+    const rotation = new THREE.Quaternion().setFromRotationMatrix(matrix).normalize();
+    const control = rotation.clone().multiply(this.portalOrientation).multiply(
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ')));
+    const currentOrbit = this.portalOrientation.clone().multiply(new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ')));
+    const transportedOrbit = rotation.clone().multiply(currentOrbit);
+    const angles = new THREE.Euler().setFromQuaternion(transportedOrbit, 'YXZ');
+    const newYaw = angles.y;
+    const newPitch = THREE.MathUtils.clamp(angles.x, -1.15, 1.15);
+    // Euler rates are basis dependent: transport a tiny tangent step instead
+    // of discarding velocity or treating a floor exit as a yaw-only rotation.
+    const tangent = rotation.clone().multiply(this.portalOrientation).multiply(new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(this.pitch + this.pitchVelocity * 1e-4, this.yaw + this.yawVelocity * 1e-4, 0, 'YXZ')));
+    const tangentAngles = new THREE.Euler().setFromQuaternion(tangent, 'YXZ');
+    this.yawVelocity = Math.atan2(Math.sin(tangentAngles.y - newYaw), Math.cos(tangentAngles.y - newYaw)) / 1e-4;
+    this.pitchVelocity = (tangentAngles.x - angles.x) / 1e-4;
+    // Yaw is undefined at a vertical view. Do not turn its Euler singularity
+    // into thousands of radians per second after a floor-to-wall passage.
+    if (Math.abs(Math.cos(angles.x)) < .12) this.yawVelocity = this.pitchVelocity = 0;
+    this.yaw = newYaw; this.pitch = newPitch;
+    const uprightOrbit = new THREE.Quaternion().setFromEuler(new THREE.Euler(newPitch, newYaw, 0, 'YXZ'));
+    this.portalOrientation.copy(transportedOrbit).multiply(uprightOrbit.invert()).normalize();
+    this.portalUpOrientation.premultiply(rotation).normalize();
+    for (const point of [this.focus, this.lastTarget, this.goal, this.playerPivot, this.desired, this.lookPoint]) point.applyMatrix4(matrix);
+    for (const direction of [this.focusVelocity, this.forward, this.right, this.boomDirection, this.viewUp]) direction.applyQuaternion(rotation);
+    if (target) this.lastTarget.copy(target);
+    this.camera.position.applyMatrix4(matrix);
+    this.camera.quaternion.premultiply(rotation);
+    this.camera.up.applyQuaternion(rotation);
+    this.camera.updateMatrixWorld(true);
+    this.camera.updateProjectionMatrix();
+    this.portalExit = clipExit && exit?.normal ? exit : null;
+    this.updatePortalClipping();
+    const controls = new THREE.Euler().setFromQuaternion(control, 'YXZ');
+    return { yaw: controls.y, pitch: THREE.MathUtils.clamp(controls.x, -1.15, 1.15), rotation };
   }
 
   update({ dt, target, yaw, pitch, velocity, aiming = false, teleported = false }) {
@@ -97,18 +157,30 @@ export class LabCamera {
     const yawGoal = this.yaw + Math.atan2(Math.sin(yaw - this.yaw), Math.cos(yaw - this.yaw));
     [this.yaw, this.yawVelocity] = spring(this.yaw, this.yawVelocity, yawGoal, 38, step);
     [this.pitch, this.pitchVelocity] = spring(
-      this.pitch, this.pitchVelocity, THREE.MathUtils.clamp(pitch, -0.72, 0.3), 38, step,
+      this.pitch, this.pitchVelocity, THREE.MathUtils.clamp(pitch, -1.15, 1.15), 38, step,
+    );
+    // A shot must never move the whole frame. Even an explicit aim change moves
+    // the shoulder and boom continuously instead of switching their direction
+    // in one frame (which used to look like recoil despite a smooth FOV).
+    [this.aimBlend, this.aimBlendVelocity] = spring(
+      this.aimBlend, this.aimBlendVelocity, aiming ? 1 : 0, 12, step,
     );
     const fovGoal = aiming ? 59.5 : 62 + THREE.MathUtils.clamp((speed - 4) * 0.4, 0, 2.2);
     const oldFov = this.camera.fov;
     [this.camera.fov, this.fovVelocity] = spring(oldFov, this.fovVelocity, fovGoal, 7, step);
     if (Math.abs(oldFov - this.camera.fov) > 0.00001) this.camera.updateProjectionMatrix();
 
-    this.forward.set(0, 0, -1).applyEuler(this.euler.set(this.pitch, this.yaw, 0, 'YXZ'));
-    this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    const length = aiming ? 5.7 : 6.5;
+    // A wall-to-floor passage initially retains the exact transported view.
+    // Gravity returns the horizon gradually; there is no one-frame roll snap.
+    this.portalOrientation.slerp(IDENTITY, 1 - Math.exp(-3.8 * step));
+    this.portalUpOrientation.slerp(IDENTITY, 1 - Math.exp(-3.8 * step));
+    this.orbitQuaternion.setFromEuler(this.euler.set(this.pitch, this.yaw, 0, 'YXZ')).premultiply(this.portalOrientation);
+    this.forward.set(0, 0, -1).applyQuaternion(this.orbitQuaternion);
+    this.right.set(1, 0, 0).applyQuaternion(this.orbitQuaternion);
+    this.viewUp.copy(UP).applyQuaternion(this.portalUpOrientation);
+    const length = THREE.MathUtils.lerp(6.5, 5.7, this.aimBlend);
     this.desired.copy(this.focus).addScaledVector(this.forward, -length)
-      .addScaledVector(this.right, aiming ? 0.78 : 0.62);
+      .addScaledVector(this.right, THREE.MathUtils.lerp(0.62, 0.78, this.aimBlend));
     for (const object of this.blockers) object.updateWorldMatrix(true, true);
 
     // Resolve both the smoothed pivot and the actual player. The latter matters
@@ -137,10 +209,27 @@ export class LabCamera {
       this.distanceVelocity = 0;
     }
     this.lookPoint.copy(this.focus).addScaledVector(this.forward, 16);
-    this.camera.up.copy(UP);
+    this.camera.up.copy(this.viewUp);
     this.camera.lookAt(this.lookPoint);
     this.camera.updateMatrixWorld();
+    this.updatePortalClipping();
     return this;
+  }
+
+  updatePortalClipping() {
+    if (!this.portalExit) return;
+    // Rebuild before applying an oblique plane; modifying an already clipped
+    // matrix accumulates distortion and would leak into normal gameplay.
+    this.camera.updateProjectionMatrix();
+    const exit = this.portalExit;
+    if (exit.group && !exit.group.parent) { this.portalExit = null; return; }
+    const distance = this.camera.position.clone().sub(exit.position).dot(exit.normal);
+    if (distance >= this.camera.near + .035) { this.portalExit = null; return; }
+    const direction = this.camera.getWorldDirection(this.castDirection);
+    // A clipped frustum is meaningful only while the transported eye looks
+    // into the destination. The ordinary blocker sweep handles turning away.
+    if (direction.dot(exit.normal) <= .04) return;
+    applyPortalObliqueClipping(this.camera, exit);
   }
 
   constrain(origin, position) {
@@ -163,7 +252,8 @@ export class LabCamera {
         .addScaledVector(this.castUp, y * radius);
       this.raycaster.set(this.castOrigin, this.castDirection);
       const hits = this.raycaster.intersectObjects(this.blockers, true);
-      if (hits.length > 0) safeDistance = Math.min(safeDistance, Math.max(0, hits[0].distance - radius - 0.035));
+      const hit = hits.find(candidate => this.isBlocker(candidate.object, candidate));
+      if (hit) safeDistance = Math.min(safeDistance, Math.max(0, hit.distance - radius - 0.035));
     }
     if (safeDistance >= distance) return false;
     position.copy(origin).addScaledVector(this.castDirection, safeDistance);

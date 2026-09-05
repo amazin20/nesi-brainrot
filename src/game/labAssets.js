@@ -12,6 +12,14 @@ export const LAB_ASSETS = Object.freeze([
   { id: 20, file: 'model-20-energy-barrier.glb', label: 'Энергетический барьер', role: 'energy-barrier', preferredSize: 5.4, originalFilename: '8e5298df19d2b4296c9c6f2bdf46622e-optimized(1).glb' },
   { id: 21, file: 'model-21-launch-pad.glb', label: 'Импульсная площадка', role: 'launch-pad', preferredSize: 3.0, originalFilename: 'fce4f07188eff73c2d94c23f9facf02e-optimized(1).glb' },
   { id: 22, file: 'model-22-terminal.glb', label: 'Терминал', role: 'terminal', preferredSize: 2.0, originalFilename: '0c2933409300b209c72eba89cd0f5524-optimized(2).glb' },
+  { id: 23, file: 'model-23-floor-tile.glb', label: 'Напольная плита', role: 'floor-tile', preferredSize: 3.0, originalFilename: '923d828b78ad1614741ecee0c25c4e08-optimized.glb', sourceDimensions: [0.852844, 0.054270, 0.866259] },
+  { id: 24, file: 'model-24-wall-panel.glb', label: 'Стенная панель', role: 'wall-panel', preferredSize: 3.0, originalFilename: 'e84d313feb6f8815b34a01551c501f39-optimized.glb', sourceDimensions: [0.875399, 0.820864, 0.046280] },
+  { id: 25, file: 'model-25-ramp-lipped.glb', label: 'Пандус с бортиком', role: 'ramp-lipped', preferredSize: 3.4, originalFilename: 'cbe2502b52a298d2e2b7d625a35699b6-optimized.glb', sourceDimensions: [0.573651, 0.444899, 0.966597] },
+  { id: 26, file: 'model-26-railing.glb', label: 'Секция перил', role: 'railing', preferredSize: 2.0, originalFilename: 'eef4de44cd7ddc7c90dc981b2a4675ea-optimized.glb', sourceDimensions: [0.999712, 0.668759, 0.079582] },
+  { id: 27, file: 'model-27-ramp-wide.glb', label: 'Широкий пандус', role: 'ramp-wide', preferredSize: 3.4, originalFilename: '7aa025be54f5377baf7ec2c97f55b6ee-optimized.glb', sourceDimensions: [0.952992, 0.387031, 1.107892] },
+  { id: 28, file: 'model-28-rotating-panel.glb', label: 'Поворотная панель', role: 'rotating-panel', preferredSize: 4.2, originalFilename: '45538bb83580c4d32c6b85d5ea2d53c3-optimized.glb' },
+  { id: 29, file: 'model-29-pressure-platform.glb', label: 'Нажимная платформа', role: 'pressure-platform', preferredSize: 3.4, originalFilename: '380d117a10aba2c90bc260e496c0beb6-optimized.glb' },
+  { id: 30, file: 'model-30-counterweight-bridge.glb', label: 'Мост с противовесом', role: 'counterweight-bridge', preferredSize: 6.0, originalFilename: 'e4ab7dd3dbe822701601286836dadcb7-optimized.glb' },
 ]);
 
 export const CORE_ASSETS = Object.freeze([
@@ -21,3 +29,9 @@ export const CORE_ASSETS = Object.freeze([
 ]);
 
 export const ALL_LAB_ASSETS = Object.freeze([...CORE_ASSETS, ...LAB_ASSETS]);
+
+// A level declares its own dependencies; the full catalog is not a loading list.
+// The exact set is shared by the loader and the production packaging gate.
+export const FIRST_LEVEL_ASSET_IDS = Object.freeze([1, 2, 11, 13, 14, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]);
+export const FIRST_LEVEL_ASSETS = Object.freeze(ALL_LAB_ASSETS.filter(asset => FIRST_LEVEL_ASSET_IDS.includes(asset.id)));
+export const runtimeAssetPath = asset => `models/runtime/${asset.file}`;

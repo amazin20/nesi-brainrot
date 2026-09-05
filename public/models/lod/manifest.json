@@ -1,0 +1,139 @@
+{
+  "generator": "meshoptimizer 1.2.0 + glTF Transform 4.5.0",
+  "method": "simplifyWithAttributes; no permissive seam flag; target 18,000 triangles; normal weights 0.5; UV weights 0.05; relative error cap 0.001; retained vertex attributes copied bit-exact; original embedded WebP images copied byte-exact; no recompression",
+  "models": [
+    {
+      "source": "model-23-floor-tile.glb",
+      "output": "lod/model-23-floor-tile.glb",
+      "sourceSHA256": "50bd0401d3b78c6f255e0675f03162326307d720b3d0de9f902b323930e86db1",
+      "sourceBytes": 1799036,
+      "textureSHA256": [
+        "670cf9bb8b362f09e7679be758d4e187e9fdace5dd20cc77d850ff7f3df2eed3",
+        "0f3523e113e37e255b45620f8530f6cc62d4137b0d5b7c373e8dedf3261c3472",
+        "22ed67bf8a634c1d66f9934573d24251623d36d36a010b5db1141d8a5aeeb95e"
+      ],
+      "primitives": [
+        {
+          "trianglesBefore": 750000,
+          "trianglesAfter": 21676,
+          "verticesBefore": 421045,
+          "verticesAfter": 20645,
+          "relativeError": 0.000998839852400124,
+          "unchangedRetainedVertexAttributes": true
+        }
+      ],
+      "outputBytes": 853444,
+      "outputSHA256": "2aa53385c233f9e7f96134bb2368be4325b718d9b6c0b7a53dd4aadff393f291",
+      "textureBytesUnchanged": true,
+      "materialParametersUnchanged": true
+    },
+    {
+      "source": "model-24-wall-panel.glb",
+      "output": "lod/model-24-wall-panel.glb",
+      "sourceSHA256": "d2749e11a94f444e4334dafc1606b0bf2e1be06d93ccb2a3505a5a562e23b419",
+      "sourceBytes": 1828160,
+      "textureSHA256": [
+        "c1c875a9ad13b133b5b26f0ff00c8dd6a0db368f077544d5a141030d656dde0f",
+        "bb0afea48c3c9fbac6952c1ea2d6b583e6ec04a62c723e999f8d7f05892f11bc",
+        "6deabf4fd7b0104fb212bbc80827d9ba69c92e5fa1cf7f3b456af78cd826ca20"
+      ],
+      "primitives": [
+        {
+          "trianglesBefore": 749984,
+          "trianglesAfter": 39798,
+          "verticesBefore": 459256,
+          "verticesAfter": 37876,
+          "relativeError": 0.0009793066419661045,
+          "unchangedRetainedVertexAttributes": true
+        }
+      ],
+      "outputBytes": 1479600,
+      "outputSHA256": "9156635cb9a3dde77e40a7b351a199c339bc930c38f87adf1dca781a80f7cd32",
+      "textureBytesUnchanged": true,
+      "materialParametersUnchanged": true
+    },
+    {
+      "source": "model-25-ramp-lipped.glb",
+      "output": "lod/model-25-ramp-lipped.glb",
+      "sourceSHA256": "aee3afcc88b9e3425e04c4cc115cf2133f51afcf186abd0c2e4fe312d8cddcba",
+      "sourceBytes": 2063240,
+      "textureSHA256": [
+        "6a52c7238c7604cba996c1db1780f739eaebd1ede3e388227adbd41f4b0048a0",
+        "39ed2194c62297504497530913439d927942669ea124b3aa930b294ddce00729",
+        "b48a4b6fe8045bbe19314378d6ee3a9592e84c75459f516c90cc78505530e4c0"
+      ],
+      "primitives": [
+        {
+          "trianglesBefore": 750050,
+          "trianglesAfter": 39178,
+          "verticesBefore": 468525,
+          "verticesAfter": 37341,
+          "relativeError": 0.0009958427399396896,
+          "unchangedRetainedVertexAttributes": true
+        }
+      ],
+      "outputBytes": 1503176,
+      "outputSHA256": "687db50a7535c6771a075e6565ed6b7a92c9ed0b9d0aea750117f3c309dc41df",
+      "textureBytesUnchanged": true,
+      "materialParametersUnchanged": true
+    },
+    {
+      "source": "model-26-railing.glb",
+      "output": "lod/model-26-railing.glb",
+      "sourceSHA256": "343b8eb3caf96cfd126a0dedccea3e91f1dcf65cb75f4f1b82e562e248235bb6",
+      "sourceBytes": 1736444,
+      "textureSHA256": [
+        "0789fc50d499ab78db59eb0ef733551a5b794fd5d98c24d78f3071aff95447dc",
+        "a041de6cf3ff3c984ff7c17148fd5f1b6fd53861475375f4d0cc71c8aa55cd46",
+        "77fdd26541fa32f0cbe5f1e8523c6dcfba3f165d1dc5c548ab8698f261f93955"
+      ],
+      "primitives": [
+        {
+          "trianglesBefore": 750000,
+          "trianglesAfter": 21286,
+          "verticesBefore": 440998,
+          "verticesAfter": 19740,
+          "relativeError": 0.0009975931607186794,
+          "unchangedRetainedVertexAttributes": true
+        }
+      ],
+      "outputBytes": 832372,
+      "outputSHA256": "7160541d7ebf8d1bf494e88e6bdaf1d704a3ac84df1cae36dd8bc2daedb604f7",
+      "textureBytesUnchanged": true,
+      "materialParametersUnchanged": true
+    },
+    {
+      "source": "model-27-ramp-wide.glb",
+      "output": "lod/model-27-ramp-wide.glb",
+      "sourceSHA256": "aa14cb98882852cab7fa39a2787c5b8e32c4ee0a0f2bf8461750fddb0d8e9743",
+      "sourceBytes": 2026904,
+      "textureSHA256": [
+        "4e46e1a4f05fd1fb0c04c0afc9c9772c084df83a34ad86a5771fc9e6ed735831",
+        "4833e4cf80a16dda47bf2b05786c6f492d6de1d0dd2a77a29df89c90f9a2685b",
+        "46d4f746b94d8899d52e9cd2c18772c04b6b46a4d27633efbb6e5f4d6e722ba1"
+      ],
+      "primitives": [
+        {
+          "trianglesBefore": 750000,
+          "trianglesAfter": 25060,
+          "verticesBefore": 437559,
+          "verticesAfter": 21785,
+          "relativeError": 0.000976855051703751,
+          "unchangedRetainedVertexAttributes": true
+        }
+      ],
+      "outputBytes": 904992,
+      "outputSHA256": "e7d687b4fee841065b58e4cf9d3db2c0330c0b3917d1d1899f362ab709556ffa",
+      "textureBytesUnchanged": true,
+      "materialParametersUnchanged": true
+    }
+  ],
+  "validation": {
+    "assetIntegrityTests": "tests/lab-environment-lod.test.js: 5 PASS",
+    "cpuRasterViewsPerModel": 2,
+    "cpuRasterResolution": 600,
+    "minimumSilhouetteIoU": 0.9989400042399831,
+    "maximumMeanRGBByteDelta": 0.5161683330189273,
+    "note": "CPU orthographic source-vs-LOD comparison uses base texture and vertex normals. It is not the full browser PBR pipeline or an exhaustive Hausdorff test."
+  }
+}

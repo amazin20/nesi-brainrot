@@ -1,7 +1,7 @@
 name: Playable demo smoke
 on:
   push:
-    branches: [main, playable-demo-v1]
+    branches: [main, playable-demo-v1, animation-v4, character-life-v5, character-life-v6]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -9,7 +9,7 @@ permissions:
 jobs:
   demo-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +22,20 @@ jobs:
           npm install --no-save --package-lock=false puppeteer-core@24.16.0
       - name: Unit tests and production build
         run: npm run check
+      - name: Stamp review build
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          fs.writeFileSync('dist/build-info.json', JSON.stringify({ commit: process.env.GITHUB_SHA, branch: process.env.GITHUB_REF_NAME, builtAt: new Date().toISOString() }) + '\n');
+          NODE
+      - name: Upload playable production build
+        uses: actions/upload-artifact@v4
+        with:
+          name: nesi-playable-build
+          path: dist/
+          retention-days: 14
+      - name: Full route on actual model geometry
+        run: node scripts/lab-journey.mjs
       - name: Install video encoder
         run: |
           sudo apt-get update -qq
@@ -31,7 +45,7 @@ jobs:
         run: |
           npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/nesi-preview.log 2>&1 &
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:4173/nesi-brainrot/ >/dev/null; then exit 0; fi
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
             sleep 1
           done
           cat /tmp/nesi-preview.log
@@ -40,18 +54,40 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          import { ALL_LAB_ASSETS } from './src/game/labAssets.js';
-          if (ALL_LAB_ASSETS.length !== 14) throw new Error('Expected 14 active models');
-          for (const asset of ALL_LAB_ASSETS) {
-            if (!fs.existsSync('dist/models/' + asset.file)) throw new Error('Missing ' + asset.file);
+          import { FIRST_LEVEL_ASSETS, runtimeAssetPath } from './src/game/labAssets.js';
+          if (FIRST_LEVEL_ASSETS.length !== 18) throw new Error('Expected 18 level dependencies');
+          const manifest = JSON.parse(fs.readFileSync('dist/models/runtime/manifest.json'));
+          if (manifest.models.length !== 18) throw new Error('Packaged inventory mismatch');
+          let modelBytes = 0;
+          for (const asset of FIRST_LEVEL_ASSETS) {
+            const file = 'dist/' + runtimeAssetPath(asset);
+            if (!fs.existsSync(file)) throw new Error('Missing ' + file);
+            modelBytes += fs.statSync(file).size;
           }
-          for (const file of fs.readdirSync('dist/models')) {
-            if (/model-(03|04|05|06|07|08|09|10)-/.test(file)) throw new Error('Removed asset still shipped: ' + file);
-          }
+          if (modelBytes > 8000000) throw new Error('First-level model budget exceeded');
+          if (fs.existsSync('dist/model-screens') || fs.existsSync('dist/concepts') || fs.existsSync('dist/models/model-01-player.glb')) throw new Error('Source/reference assets leaked into playable package');
+          console.log('Runtime inventory:', FIRST_LEVEL_ASSETS.length, 'models,', modelBytes, 'bytes');
           NODE
-      - name: Run WebGL gameplay and record character
+      - name: Run WebGL gameplay and pose checks
+        run: |
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          test -n "$CHROME_PATH"
+          export CHROME_PATH
+          node scripts/lab-smoke.mjs
+      - name: Upload gameplay and stills before recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playable-demo-qa
+          path: |
+            smoke-artifacts/report.json
+            smoke-artifacts/*.png
+          if-no-files-found: warn
+      - name: Record 600 production animation frames
+        timeout-minutes: 75
         env:
           RECORD_VIDEO: '1'
+          EVIDENCE_PHASE: record
         run: |
           CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
           test -n "$CHROME_PATH"
@@ -64,9 +100,16 @@ jobs:
           name: playable-demo-smoke
           path: |
             smoke-artifacts/report.json
-            smoke-artifacts/lab-third-person.png
-            smoke-artifacts/player-animation.mp4
-            smoke-artifacts/weapon-grip.png
-            smoke-artifacts/carry-pose.png
-            smoke-artifacts/recording-fallback/
+            smoke-artifacts/recording-report.json
+            smoke-artifacts/*.png
+            smoke-artifacts/player-animation*.mp4
           if-no-files-found: warn
+      - name: Preserve completed frames after recording failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playable-demo-partial-frames
+          path: smoke-artifacts/animation-frames/*.png
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: ignore

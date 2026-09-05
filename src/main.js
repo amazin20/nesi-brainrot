@@ -4,6 +4,7 @@ import { LabGame } from './game/LabGame.js';
 const $ = (selector) => document.querySelector(selector);
 const query = new URLSearchParams(location.search);
 const smokeMode = query.get('smoke') === '1';
+const evidenceMode = query.get('evidence') === '1';
 const debugMode = smokeMode || query.get('debug') === '1';
 const elements = {
   game: $('#game'), loading: $('#loading'), loadingBar: $('#loading-bar'),
@@ -86,11 +87,12 @@ function showRuntimeError(error) {
 const game = new LabGame({
   container: elements.game,
   touch: { joystick: elements.joystick, joystickKnob: elements.knob, jumpButton: elements.jump },
-  onProgress: ({ completed, total, label }) => {
-    const percent = total > 0 ? Math.round(completed / total * 100) : 0;
+  onProgress: ({ percent: measuredPercent, completed, total, label, loadedBytes, totalBytes, phase }) => {
+    const percent = Math.max(0, Math.min(100, Number.isFinite(measuredPercent) ? measuredPercent : total > 0 ? Math.round(completed / total * 100) : 0));
     elements.loadingBar.style.width = percent + '%';
     elements.loadingPercent.textContent = percent + '%';
-    elements.loadingLabel.textContent = label;
+    elements.loadingLabel.textContent = phase === 'download' && totalBytes > 0
+      ? `${(loadedBytes / 1e6).toFixed(1)} / ${(totalBytes / 1e6).toFixed(1)} МБ · ${label}` : label;
     $('#loading-progress').setAttribute('aria-valuenow', String(percent));
   },
   onReady: () => {
@@ -102,11 +104,12 @@ const game = new LabGame({
       window.__NESI_DEMO_GAME__ = game;
       window.__NESI_DEMO_DIAGNOSTIC_TIMER__ = setInterval(publishDiagnostics, 200);
     }
-    if (smokeMode) setTimeout(enterGame, 60);
+    if (smokeMode && !evidenceMode) setTimeout(enterGame, 60);
     else elements.play.focus({ preventScroll: true });
   },
-  onHud: ({ chamber, hasCargo, portalsReady, friendStatus }) => {
+  onHud: ({ chamber, objective, hasCargo, portalsReady, friendStatus }) => {
     elements.chamber.textContent = chamber;
+    $('#objective').textContent = objective || '';
     elements.cargo.textContent = friendStatus || (hasCargo ? 'Друг на руках' : 'Друг ждёт тебя');
     elements.cargo.classList.toggle('status--active', hasCargo);
     elements.portalStatus.textContent = portalsReady ? 'Порталы связаны' : 'Нужна пара порталов';
@@ -188,4 +191,11 @@ addEventListener('unhandledrejection', (event) => {
   }
   showRuntimeError(event.reason);
 });
-game.init().catch(showRuntimeError);
+game.init().then(async () => {
+  if (evidenceMode) {
+    for (const screen of [elements.start, elements.pause, elements.win]) showScreen(screen, false);
+    game.resetRun(true); setPlayState('playing');
+    const { mountLabEvidence } = await import('./game/LabEvidence.js');
+    mountLabEvidence(game);
+  }
+}).catch(showRuntimeError);

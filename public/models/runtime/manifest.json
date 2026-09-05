@@ -1,0 +1,952 @@
+{
+  "generator": "glTF Transform 4.5.0; meshoptimizer 1.2.0; Draco 1.5.7",
+  "method": "Attribute-aware simplification; exact attribute weld; retained source vertices; strict seams except UV-weighted wall24; no Prune; unchanged embedded WebP textures; 15/10/13-bit position/normal/UV Draco",
+  "totalBytes": 7410788,
+  "totalTriangles": 622743,
+  "models": [
+    {
+      "id": 1,
+      "filename": "model-01-player.glb",
+      "sourceFilename": "model-01-player.glb",
+      "sourceSHA256": "58edd10fe36337b3901236ca93ed35cad9a537e64820e80d3c1060eb1babf516",
+      "sourceBytes": 2682028,
+      "outputBytes": 549756,
+      "outputSHA256": "e5b09ff0281377b679d6fdd505fa1ed89550bb662e94e7f593ed67ee50a66a91",
+      "targetTriangles": 80000,
+      "errorCap": 0.0025,
+      "primitives": [
+        {
+          "trianglesBefore": 749920,
+          "trianglesAfter": 80000,
+          "verticesBefore": 507310,
+          "verticesAfter": 69610,
+          "relativeError": 0.0014234770787879825,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 80000,
+      "vertices": 69777,
+      "textureSHA256": [
+        "2cddc3a15b471459f8b93d52c20841b27340cab06ed18f3440d6101a3ac3b7b3",
+        "b11d9360b6cc78cd840f2e72de7e567fec2b3ecbafd1874645a24611ffbc039e",
+        "ebe0adb808b5f4a71943e015f463678b279426fd202334d0f81703fcb4076801"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 2079
+    },
+    {
+      "id": 2,
+      "filename": "model-02-cargo.glb",
+      "sourceFilename": "model-02-cargo.glb",
+      "sourceSHA256": "8266c275bb1a850ae21e08411ae1b131a857dc4cd25ea44273f2bc28e4c43bdc",
+      "sourceBytes": 2683500,
+      "outputBytes": 510376,
+      "outputSHA256": "65763c87e7f14cc807cffa8fc2adc364e8421dae819271a0c406a6b0d2c8c697",
+      "targetTriangles": 55000,
+      "errorCap": 0.0025,
+      "primitives": [
+        {
+          "trianglesBefore": 749906,
+          "trianglesAfter": 55000,
+          "verticesBefore": 484517,
+          "verticesAfter": 49617,
+          "relativeError": 0.0017594605451449752,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 55000,
+      "vertices": 49736,
+      "textureSHA256": [
+        "111aa669d0a5fac8e80e930843beced12f76789c4ae0480e9accaf3ddf1a4a77",
+        "74de401f7721e830ac26582c10d756773a1e98c470813c1709e50b3a0f53259c",
+        "b61b8a2038797f4176bb4768094253795c6451a4993d2a483d3d5f7b9b11a579"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 1524
+    },
+    {
+      "id": 11,
+      "filename": "model-11-portal-gun.glb",
+      "sourceFilename": "model-11-portal-gun.glb",
+      "sourceSHA256": "421350baf3d233dcf707d5efccadc0b9ec9ff0e8389165c0694229e5d4e29b38",
+      "sourceBytes": 2656704,
+      "outputBytes": 393116,
+      "outputSHA256": "d8c76c41efbbf0a6d70e30ab5a7b70f49fd806e497f67ea06cb28f9f4edca1d7",
+      "targetTriangles": 22000,
+      "errorCap": 0.006,
+      "primitives": [
+        {
+          "trianglesBefore": 750000,
+          "trianglesAfter": 25194,
+          "verticesBefore": 504544,
+          "verticesAfter": 26667,
+          "relativeError": 0.005989306606352329,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 25194,
+      "vertices": 26886,
+      "textureSHA256": [
+        "49396d6370147fc5cded924722f0c3bebc815ec0110d8b229d943abf7e7f9d4b",
+        "92148c4b0704ffea15261b412d63d30c77da41858f8cbad20f5fde63f7899233",
+        "93b4426f696c0a42b13511ea0270559f244f382c10cefa2331589dc4f1933a64"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 1441
+    },
+    {
+      "id": 12,
+      "filename": "model-12-grand-piano.glb",
+      "sourceFilename": "model-12-grand-piano.glb",
+      "sourceSHA256": "e27cfec41b7744c9b88f70af0d7e7bfb35fdbaa62d28b0567358856c7e820962",
+      "sourceBytes": 343828,
+      "outputBytes": 245952,
+      "outputSHA256": "7c158b751a7d11a55be35f500d41822eedf6fa4332a8c641555c569add498fb0",
+      "targetTriangles": 16000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 37496,
+          "trianglesAfter": 16000,
+          "verticesBefore": 33273,
+          "verticesAfter": 16526,
+          "relativeError": 0.002839386463165283,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 16000,
+      "vertices": 16554,
+      "textureSHA256": [
+        "1364ab60cbb966a0130bafc06ff8ca37cd083ee6b1c4e5a09bcaf8d08da32094",
+        "5e1d7c3d00f8bda2465870d1fe390f3371811b3edb3f44fa4b417f06d1f4085d",
+        "fb51bf4690b1001c7db9a77447c06817ce2b478959bde26a69de9ecff034d7e1"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 146
+    },
+    {
+      "id": 13,
+      "filename": "model-13-office-chair.glb",
+      "sourceFilename": "model-13-office-chair.glb",
+      "sourceSHA256": "3631ae9f232eff3967de5f4d883a3a13bd07f0f53b89d3ee5fc3d4601e08cb71",
+      "sourceBytes": 482616,
+      "outputBytes": 390920,
+      "outputSHA256": "2cfd3130e3d794a4bfb71b46d8d06918c0043d135912218558227533ab052472",
+      "targetTriangles": 18000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 37500,
+          "trianglesAfter": 18000,
+          "verticesBefore": 35019,
+          "verticesAfter": 19205,
+          "relativeError": 0.002760994713753462,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 18000,
+      "vertices": 19225,
+      "textureSHA256": [
+        "273775b0501fc36a27de50f9c4cf25571c95ef716781bed7448934b5416d6141",
+        "4119d5f445c72b088ef9dfd08112977c7263e6970b1b46754aa759d949103cb4",
+        "b6201103da9a4945ba58915af14f6b51e9f4bafa822111fb4bd95b638b21ccbb"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 145
+    },
+    {
+      "id": 14,
+      "filename": "model-14-round-table.glb",
+      "sourceFilename": "model-14-round-table.glb",
+      "sourceSHA256": "58dc2e9215795945fd951d46e0da81d6fd8eeacb7371df428d6ed3a75097c5b6",
+      "sourceBytes": 278596,
+      "outputBytes": 160200,
+      "outputSHA256": "1cc3fea8829a8c6ff30825eb0837c79dc67d51f4ae209521d9741104faebcba1",
+      "targetTriangles": 12000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 37500,
+          "trianglesAfter": 12000,
+          "verticesBefore": 31687,
+          "verticesAfter": 11585,
+          "relativeError": 0.0023409114219248295,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 12000,
+      "vertices": 11601,
+      "textureSHA256": [
+        "344b0941fe1c46b71a093b82b50a25e60d55774432b896f53fcb625844ddea68",
+        "4cf57bd1476e029e56ed8ab3e7f8a70a6276faef174b9673a24a60da1aee5213",
+        "b70a58afe08efc35cfbe986280f77d887bd47e76231515c53035fe63b191afbf"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 116
+    },
+    {
+      "id": 15,
+      "filename": "model-15-mug.glb",
+      "sourceFilename": "model-15-mug.glb",
+      "sourceSHA256": "be6d7ac76d7c7a120e9e303e2a710a324861846fe6f555165cb536d7bc98600f",
+      "sourceBytes": 252496,
+      "outputBytes": 114244,
+      "outputSHA256": "14547f3e7df323edeff95e77120a3f205dc55c6f97ef0739a92dcb51b59c3838",
+      "targetTriangles": 8000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 37500,
+          "trianglesAfter": 8000,
+          "verticesBefore": 32552,
+          "verticesAfter": 6904,
+          "relativeError": 0.002680766861885786,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 8000,
+      "vertices": 6909,
+      "textureSHA256": [
+        "142e62ee426d9e37e288f29d57d563a729d3c1b88c87f040296096c2ca61624f",
+        "1e0dc253991cd38c2a6e175f25fb0cab8539b9137195d9debe6bd46a39ed3a25",
+        "dc995464508f239a93eed44fc0e62596cb9a3793efa4cc94bc926a1d79f11bd5"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 112
+    },
+    {
+      "id": 16,
+      "filename": "model-16-phase-wall.glb",
+      "sourceFilename": "model-16-phase-wall.glb",
+      "sourceSHA256": "aedc5a0becc3c3dc3fff3441675ab0d47da57c754a0f921cad30ae46a57aa330",
+      "sourceBytes": 482540,
+      "outputBytes": 366396,
+      "outputSHA256": "98f3ec90585531f58cf3d29b2bd501d1b4468fed6405782926eb0d7ab2aab02f",
+      "targetTriangles": 15000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 46232,
+          "trianglesAfter": 20104,
+          "verticesBefore": 42278,
+          "verticesAfter": 22150,
+          "relativeError": 0.0039911093190312386,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 20104,
+      "vertices": 22180,
+      "textureSHA256": [
+        "1853d35dd43e321df623cb5ac2722020b35758937cf9efcc5ffb26e535aed968",
+        "619985d28153c413652f2132e8be9bdb22f1ed546f9ca6cdfa3a03d62f40fea5",
+        "8ef1328177e70ff9fa268634a066070e305abd4c22a5182db2841038761ff4e6"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 147
+    },
+    {
+      "id": 17,
+      "filename": "model-17-lab-door.glb",
+      "sourceFilename": "model-17-lab-door.glb",
+      "sourceSHA256": "0fd22a882de66937d1160f6d3eb9446542f941028a33b9520bd1fcd99267ecef",
+      "sourceBytes": 621904,
+      "outputBytes": 475572,
+      "outputSHA256": "3c512bc351f99b09ee3072833a94ec4bd63add8576eed2e89d0c1c0f865fa617",
+      "targetTriangles": 22000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 65336,
+          "trianglesAfter": 34570,
+          "verticesBefore": 62880,
+          "verticesAfter": 37912,
+          "relativeError": 0.003973194397985935,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 34570,
+      "vertices": 37970,
+      "textureSHA256": [
+        "607564a1a277cd85b89bb098aebf748f76334fdf438bc4d4894a6b706f481fcc",
+        "a9ca69d6172bff9b76af3aa184501bc972ea9c60a48d8dce9339e440f409f9ef",
+        "cadad92c99e6a85be95ab01eb4a9c747128a4c8468581d4b42ff23edc127e903"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 219
+    },
+    {
+      "id": 18,
+      "filename": "model-18-pressure-pad.glb",
+      "sourceFilename": "model-18-pressure-pad.glb",
+      "sourceSHA256": "b9e51569c3ace74015393947e680f344ff9e8676cacde59bc5d4bd6be58b8dd1",
+      "sourceBytes": 589852,
+      "outputBytes": 456532,
+      "outputSHA256": "70d4fff43158c70bca7c24cb93854be78e4594fdee5483d8962c3c5fb64631f7",
+      "targetTriangles": 18000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 62804,
+          "trianglesAfter": 35346,
+          "verticesBefore": 59636,
+          "verticesAfter": 37474,
+          "relativeError": 0.0039055689703673124,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 35346,
+      "vertices": 37656,
+      "textureSHA256": [
+        "26379dba6b1ba7c3d4ff26fecadd919eca4003ce3ae833243c0da1dbd5cde535",
+        "432096fbdf9c65c6649f9c0ea428907c371286cb806f007c64f4a268b0eb284e",
+        "7bf1eaac3205fab8e199e12f255c4687f61f861d53b224a6e4493436561b3ba3"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 227
+    },
+    {
+      "id": 19,
+      "filename": "model-19-lift-platform.glb",
+      "sourceFilename": "model-19-lift-platform.glb",
+      "sourceSHA256": "c5f0160e8099dbdb90f1e37701edfd2f7014fee8cb431b70ee1d17ec637e99f4",
+      "sourceBytes": 505892,
+      "outputBytes": 404076,
+      "outputSHA256": "afd039e831ff0baa514f076a505ffbb7c57dac2251959b3d858fc92dcf3d04b9",
+      "targetTriangles": 18000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 52956,
+          "trianglesAfter": 32042,
+          "verticesBefore": 49824,
+          "verticesAfter": 33712,
+          "relativeError": 0.003905816935002804,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 32042,
+      "vertices": 33732,
+      "textureSHA256": [
+        "4b74f4feea064712cb0df06e9359d8a04dc978aa3a6231d8049dd6b6ec52dec5",
+        "918ca55c740c6bb81fd396e5d2224ec900675f8ba932a3a3de484514915cbd63",
+        "d75ac2b92e76327bcab3557a0856afc4fabfe43f9c3aa36002e8a45e20b86fcf"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 189
+    },
+    {
+      "id": 20,
+      "filename": "model-20-energy-barrier.glb",
+      "sourceFilename": "model-20-energy-barrier.glb",
+      "sourceSHA256": "0895ceae40807461bc86269d0363a5c67811f9b55cb0ec76663a178d4691df25",
+      "sourceBytes": 453120,
+      "outputBytes": 362964,
+      "outputSHA256": "84ccbb53fca9ea828d5d35f4142aa1ae3b56d9fe109f31cc5a92e471fd64e2b9",
+      "targetTriangles": 18000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 37500,
+          "trianglesAfter": 18000,
+          "verticesBefore": 34862,
+          "verticesAfter": 19606,
+          "relativeError": 0.0036494561936706305,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 18000,
+      "vertices": 19633,
+      "textureSHA256": [
+        "016b81670bb08856cfcf8f2beccb5c4fe1322f44f19225e3793549253bdc6afc",
+        "ac4d4f6985e07329c6ca92f20555ec9c9f69e862ac5338f473069aa29035c43a",
+        "cc6928d90cc1bfdbb6e06f5045788c4486ed331a30956e2880038c75794e4243"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 124
+    },
+    {
+      "id": 21,
+      "filename": "model-21-launch-pad.glb",
+      "sourceFilename": "model-21-launch-pad.glb",
+      "sourceSHA256": "93000d90f8acfb9c04386902c583e358e9e30725e19a9cc0dd76754dd69b57c4",
+      "sourceBytes": 960776,
+      "outputBytes": 814148,
+      "outputSHA256": "1c338b6753740b143046304d84f56b574010339ce080343090310e2e46910fa9",
+      "targetTriangles": 24000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 105014,
+          "trianglesAfter": 75698,
+          "verticesBefore": 118968,
+          "verticesAfter": 94197,
+          "relativeError": 0.003976166248321533,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 75698,
+      "vertices": 94660,
+      "textureSHA256": [
+        "30b11bc2a0d974b8f232c735d672dc73957d24940f4e1adac386ec5b9fc770ec",
+        "43a14519f8fcd0f248432ae9948d199f835dd034850c81a3fededc92d7d2d528",
+        "6caf2a1fff5d4b156a70b01fe337c1bf3be825a8dd9c4ec85ffda669adb3996a"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 355
+    },
+    {
+      "id": 22,
+      "filename": "model-22-terminal.glb",
+      "sourceFilename": "model-22-terminal.glb",
+      "sourceSHA256": "1f9228858cc962724de69472d17711cfbf260b0f3932ea10d74f419a50627777",
+      "sourceBytes": 492296,
+      "outputBytes": 377108,
+      "outputSHA256": "9e2f4ff758996f67596d3935041f632bafdf7e84efd4869341920b64a5919c26",
+      "targetTriangles": 18000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 47330,
+          "trianglesAfter": 22418,
+          "verticesBefore": 45066,
+          "verticesAfter": 24900,
+          "relativeError": 0.003982218913733959,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 22418,
+      "vertices": 24951,
+      "textureSHA256": [
+        "13aeb0e640a56223a3c638460717958ee0edb8466f773486ef38da999ae75171",
+        "4151c4a9c6b4cf6020632f688c804a4a1541c3f24d571f96952b632e99b228c6",
+        "503abbe46bca29928152a16d37a80662e5125873ef0579396d86698b5442c797"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 156
+    },
+    {
+      "id": 23,
+      "filename": "model-23-floor-tile.glb",
+      "sourceFilename": "model-23-floor-tile.glb",
+      "sourceSHA256": "50bd0401d3b78c6f255e0675f03162326307d720b3d0de9f902b323930e86db1",
+      "sourceBytes": 1799036,
+      "outputBytes": 103600,
+      "outputSHA256": "0950bc6ef31bb28939087bad53695f21cde0b9fe5740394df202a0b242f77b0c",
+      "targetTriangles": 8000,
+      "errorCap": 0.012,
+      "primitives": [
+        {
+          "trianglesBefore": 750000,
+          "trianglesAfter": 8000,
+          "verticesBefore": 419677,
+          "verticesAfter": 7260,
+          "relativeError": 0.011700732633471489,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 8000,
+      "vertices": 7321,
+      "textureSHA256": [
+        "0f3523e113e37e255b45620f8530f6cc62d4137b0d5b7c373e8dedf3261c3472",
+        "22ed67bf8a634c1d66f9934573d24251623d36d36a010b5db1141d8a5aeeb95e",
+        "670cf9bb8b362f09e7679be758d4e187e9fdace5dd20cc77d850ff7f3df2eed3"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "simplifierFlags": [],
+      "buildMilliseconds": 2213
+    },
+    {
+      "id": 24,
+      "filename": "model-24-wall-panel.glb",
+      "sourceFilename": "model-24-wall-panel.glb",
+      "sourceSHA256": "d2749e11a94f444e4334dafc1606b0bf2e1be06d93ccb2a3505a5a562e23b419",
+      "sourceBytes": 1828160,
+      "outputBytes": 62448,
+      "outputSHA256": "15aaca48f6e436d5e89abf7548c0fe43580bba8faff4619e476d3a6d306b004d",
+      "targetTriangles": 6400,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 749984,
+          "trianglesAfter": 6400,
+          "verticesBefore": 454421,
+          "verticesAfter": 4465,
+          "relativeError": 0.003904643701389432,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 6400,
+      "vertices": 4771,
+      "textureSHA256": [
+        "6deabf4fd7b0104fb212bbc80827d9ba69c92e5fa1cf7f3b456af78cd826ca20",
+        "bb0afea48c3c9fbac6952c1ea2d6b583e6ec04a62c723e999f8d7f05892f11bc",
+        "c1c875a9ad13b133b5b26f0ff00c8dd6a0db368f077544d5a141030d656dde0f"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "simplifierFlags": [
+        "Permissive"
+      ],
+      "buildMilliseconds": 1643
+    },
+    {
+      "id": 25,
+      "filename": "model-25-ramp-lipped.glb",
+      "sourceFilename": "model-25-ramp-lipped.glb",
+      "sourceSHA256": "aee3afcc88b9e3425e04c4cc115cf2133f51afcf186abd0c2e4fe312d8cddcba",
+      "sourceBytes": 2063240,
+      "outputBytes": 194596,
+      "outputSHA256": "0125d3c46efb9680d88df0d71e2fac7c0f96d7fa315c5a87d4a9696571ebe638",
+      "targetTriangles": 18000,
+      "errorCap": 0.0016,
+      "primitives": [
+        {
+          "trianglesBefore": 750050,
+          "trianglesAfter": 26996,
+          "verticesBefore": 463025,
+          "verticesAfter": 21750,
+          "relativeError": 0.0015932958340272307,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 26996,
+      "vertices": 21986,
+      "textureSHA256": [
+        "39ed2194c62297504497530913439d927942669ea124b3aa930b294ddce00729",
+        "6a52c7238c7604cba996c1db1780f739eaebd1ede3e388227adbd41f4b0048a0",
+        "b48a4b6fe8045bbe19314378d6ee3a9592e84c75459f516c90cc78505530e4c0"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 1525
+    },
+    {
+      "id": 26,
+      "filename": "model-26-railing.glb",
+      "sourceFilename": "model-26-railing.glb",
+      "sourceSHA256": "343b8eb3caf96cfd126a0dedccea3e91f1dcf65cb75f4f1b82e562e248235bb6",
+      "sourceBytes": 1736444,
+      "outputBytes": 145220,
+      "outputSHA256": "96110d184f98b6899b016dddd91a44e832e130dc0232bdf29e36b57b00a8fa4d",
+      "targetTriangles": 14000,
+      "errorCap": 0.0016,
+      "primitives": [
+        {
+          "trianglesBefore": 750000,
+          "trianglesAfter": 16162,
+          "verticesBefore": 437970,
+          "verticesAfter": 13129,
+          "relativeError": 0.0015804081922397017,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 16162,
+      "vertices": 13180,
+      "textureSHA256": [
+        "0789fc50d499ab78db59eb0ef733551a5b794fd5d98c24d78f3071aff95447dc",
+        "77fdd26541fa32f0cbe5f1e8523c6dcfba3f165d1dc5c548ab8698f261f93955",
+        "a041de6cf3ff3c984ff7c17148fd5f1b6fd53861475375f4d0cc71c8aa55cd46"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 1510
+    },
+    {
+      "id": 27,
+      "filename": "model-27-ramp-wide.glb",
+      "sourceFilename": "model-27-ramp-wide.glb",
+      "sourceSHA256": "aa14cb98882852cab7fa39a2787c5b8e32c4ee0a0f2bf8461750fddb0d8e9743",
+      "sourceBytes": 2026904,
+      "outputBytes": 131428,
+      "outputSHA256": "1d1be1505b21746cb2b46e27ff3915ad38b4c6b2533c88d0337098018f4f19c5",
+      "targetTriangles": 16000,
+      "errorCap": 0.0016,
+      "primitives": [
+        {
+          "trianglesBefore": 750000,
+          "trianglesAfter": 16262,
+          "verticesBefore": 434756,
+          "verticesAfter": 12427,
+          "relativeError": 0.0015822109999135137,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 16262,
+      "vertices": 12464,
+      "textureSHA256": [
+        "46d4f746b94d8899d52e9cd2c18772c04b6b46a4d27633efbb6e5f4d6e722ba1",
+        "4833e4cf80a16dda47bf2b05786c6f492d6de1d0dd2a77a29df89c90f9a2685b",
+        "4e46e1a4f05fd1fb0c04c0afc9c9772c084df83a34ad86a5771fc9e6ed735831"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 1551
+    },
+    {
+      "id": 28,
+      "filename": "model-28-rotating-panel.glb",
+      "sourceFilename": "45538bb83580c4d32c6b85d5ea2d53c3-optimized.glb",
+      "sourceSHA256": "98f05cb33a2315c98bad1a94612efa0df11cf9693a39ab3a1eb67cb0a741878b",
+      "sourceBytes": 2516516,
+      "outputBytes": 366120,
+      "outputSHA256": "3159916bad63903e73b8e660ce4aab8a3b1e38f1231152b68f3df63d6987ac4b",
+      "targetTriangles": 26000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 750010,
+          "trianglesAfter": 35756,
+          "verticesBefore": 505556,
+          "verticesAfter": 30926,
+          "relativeError": 0.003923109732568264,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 35756,
+      "vertices": 31080,
+      "textureSHA256": [
+        "7b9832a3de60477b9f8681219495f51048d29383af5111d1052a39b1b9ae7e3d",
+        "82873a57d4a20b4dde6094d4199189585f128a653210fca2d8fc7b423b123062",
+        "f67a11d526c8635481e97946f319fa17103002a9b163a4531c2606bf00011205"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 1586
+    },
+    {
+      "id": 29,
+      "filename": "model-29-pressure-platform.glb",
+      "sourceFilename": "380d117a10aba2c90bc260e496c0beb6-optimized.glb",
+      "sourceSHA256": "f4fce83850465ea298f0d7b160c2b89c58bb89311b18e31768accb7ad87d25a3",
+      "sourceBytes": 2515196,
+      "outputBytes": 390244,
+      "outputSHA256": "ee65bd9706ad4f4658e54ec5ad8f6f45b24d9027e4e6072f162358a4c1b3291b",
+      "targetTriangles": 24000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 750000,
+          "trianglesAfter": 30796,
+          "verticesBefore": 489072,
+          "verticesAfter": 30810,
+          "relativeError": 0.003922563046216965,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 30796,
+      "vertices": 30949,
+      "textureSHA256": [
+        "427e2be4ef1da555cd165e931ac95e8ef1300ccf95f03303dcf6c7efca215f4a",
+        "4f0022495c01f9fe1db2874fa0cadffbb8da84a07fe29ed37eae4549592cb7e6",
+        "674b96acd17955554bfef5f3c00548f897b5efa6e17d3295454a1cc25a95ce3b"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 1480
+    },
+    {
+      "id": 30,
+      "filename": "model-30-counterweight-bridge.glb",
+      "sourceFilename": "e4ab7dd3dbe822701601286836dadcb7-optimized.glb",
+      "sourceSHA256": "4fbc7439531f4d8b7c80b440949be192e123b32d7059680d5831072e74ea7d7d",
+      "sourceBytes": 2548588,
+      "outputBytes": 395772,
+      "outputSHA256": "d69aa00cc7abb27fc207119abc778845aa888c47f7b29de2d4a1fc5d7961b592",
+      "targetTriangles": 30000,
+      "errorCap": 0.004,
+      "primitives": [
+        {
+          "trianglesBefore": 750158,
+          "trianglesAfter": 29999,
+          "verticesBefore": 496094,
+          "verticesAfter": 28779,
+          "relativeError": 0.003584162564948201,
+          "retainedAttributesUnchangedBeforeDraco": true
+        }
+      ],
+      "triangles": 29999,
+      "vertices": 28889,
+      "textureSHA256": [
+        "17435f3666e4effd6acd9d1d85cc1e52d649507f8ad1f303ef243aa9228807e5",
+        "2adf8bc8b6ca5f55512b06fb698d2b52968b75b32c601149e6b3bf946a584009",
+        "d188b6a70acd0724a1f4f25e1886acccee619010b571927b7718cbd4844a16b8"
+      ],
+      "originalTextureBytesUnchanged": true,
+      "authoredTransformsUnchanged": true,
+      "compression": "KHR_draco_mesh_compression",
+      "buildMilliseconds": 1533
+    }
+  ],
+  "validation": {
+    "method": "CPU orthographic 600px base texture and vertex-normal shading; 2 views; no normal-map/PBR/animation/browser claim",
+    "models": [
+      {
+        "id": 1,
+        "name": "model-01-player.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.9970984228169478,
+            "meanRGBByteDeltaOnCommonSurface": 1.5909546852437693,
+            "sourceSilhouettePixels": 90980,
+            "runtimeSilhouettePixels": 90726
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.9971075556567784,
+            "meanRGBByteDeltaOnCommonSurface": 0.7661668246517666,
+            "sourceSilhouettePixels": 87809,
+            "runtimeSilhouettePixels": 87567
+          }
+        ],
+        "comparison": "comparison-01.png"
+      },
+      {
+        "id": 2,
+        "name": "model-02-cargo.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.9971026218538847,
+            "meanRGBByteDeltaOnCommonSurface": 1.9224645547550907,
+            "sourceSilhouettePixels": 91460,
+            "runtimeSilhouettePixels": 91199
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.9967807560752051,
+            "meanRGBByteDeltaOnCommonSurface": 0.8539858404168629,
+            "sourceSilhouettePixels": 89462,
+            "runtimeSilhouettePixels": 89174
+          }
+        ],
+        "comparison": "comparison-02.png"
+      },
+      {
+        "id": 11,
+        "name": "model-11-portal-gun.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.9908641271336663,
+            "meanRGBByteDeltaOnCommonSurface": 4.218742962944429,
+            "sourceSilhouettePixels": 80609,
+            "runtimeSilhouettePixels": 79996
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.9897083245620191,
+            "meanRGBByteDeltaOnCommonSurface": 2.774450720424771,
+            "sourceSilhouettePixels": 85448,
+            "runtimeSilhouettePixels": 84684
+          }
+        ],
+        "comparison": "comparison-11.png"
+      },
+      {
+        "id": 17,
+        "name": "model-17-lab-door.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.9995479175554438,
+            "meanRGBByteDeltaOnCommonSurface": 1.8333418269843291,
+            "sourceSilhouettePixels": 157047,
+            "runtimeSilhouettePixels": 156984
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.999481946435671,
+            "meanRGBByteDeltaOnCommonSurface": 0.9473943265830923,
+            "sourceSilhouettePixels": 166002,
+            "runtimeSilhouettePixels": 165924
+          }
+        ],
+        "comparison": "comparison-17.png"
+      },
+      {
+        "id": 18,
+        "name": "model-18-pressure-pad.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.9988186119975088,
+            "meanRGBByteDeltaOnCommonSurface": 1.8613098490448794,
+            "sourceSilhouettePixels": 155707,
+            "runtimeSilhouettePixels": 155607
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.998780031241528,
+            "meanRGBByteDeltaOnCommonSurface": 1.7735346263132838,
+            "sourceSilhouettePixels": 154864,
+            "runtimeSilhouettePixels": 154791
+          }
+        ],
+        "comparison": "comparison-18.png"
+      },
+      {
+        "id": 21,
+        "name": "model-21-launch-pad.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.9989810623153176,
+            "meanRGBByteDeltaOnCommonSurface": 1.7898968851845916,
+            "sourceSilhouettePixels": 137336,
+            "runtimeSilhouettePixels": 137320
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.9989060437436642,
+            "meanRGBByteDeltaOnCommonSurface": 1.609723510042565,
+            "sourceSilhouettePixels": 137073,
+            "runtimeSilhouettePixels": 137011
+          }
+        ],
+        "comparison": "comparison-21.png"
+      },
+      {
+        "id": 23,
+        "name": "model-23-floor-tile.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.9986313116322021,
+            "meanRGBByteDeltaOnCommonSurface": 1.0595562454245722,
+            "sourceSilhouettePixels": 60641,
+            "runtimeSilhouettePixels": 60560
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.9975333424060969,
+            "meanRGBByteDeltaOnCommonSurface": 0.8696487548105072,
+            "sourceSilhouettePixels": 58784,
+            "runtimeSilhouettePixels": 58639
+          }
+        ],
+        "comparison": "comparison-23.png"
+      },
+      {
+        "id": 24,
+        "name": "model-24-wall-panel.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.999825667548014,
+            "meanRGBByteDeltaOnCommonSurface": 0.3624906764309862,
+            "sourceSilhouettePixels": 206501,
+            "runtimeSilhouettePixels": 206467
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.9998003775468136,
+            "meanRGBByteDeltaOnCommonSurface": 0.14559144172103125,
+            "sourceSilhouettePixels": 230435,
+            "runtimeSilhouettePixels": 230389
+          }
+        ],
+        "comparison": "comparison-24.png"
+      },
+      {
+        "id": 28,
+        "name": "model-28-rotating-panel.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.9983347761265811,
+            "meanRGBByteDeltaOnCommonSurface": 1.4711532092468702,
+            "sourceSilhouettePixels": 166311,
+            "runtimeSilhouettePixels": 166100
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.9984167251398859,
+            "meanRGBByteDeltaOnCommonSurface": 0.9773605079319313,
+            "sourceSilhouettePixels": 166716,
+            "runtimeSilhouettePixels": 166506
+          }
+        ],
+        "comparison": "comparison-28.png"
+      },
+      {
+        "id": 29,
+        "name": "model-29-pressure-platform.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.998752288442926,
+            "meanRGBByteDeltaOnCommonSurface": 1.6833080365829929,
+            "sourceSilhouettePixels": 171512,
+            "runtimeSilhouettePixels": 171302
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.9990037123575249,
+            "meanRGBByteDeltaOnCommonSurface": 1.5415909801453973,
+            "sourceSilhouettePixels": 168621,
+            "runtimeSilhouettePixels": 168463
+          }
+        ],
+        "comparison": "comparison-29.png"
+      },
+      {
+        "id": 30,
+        "name": "model-30-counterweight-bridge.glb",
+        "views": [
+          {
+            "view": 0,
+            "silhouetteIoU": 0.9948326055312955,
+            "meanRGBByteDeltaOnCommonSurface": 3.1074857138212173,
+            "sourceSilhouettePixels": 41205,
+            "runtimeSilhouettePixels": 41022
+          },
+          {
+            "view": 1,
+            "silhouetteIoU": 0.9923725011216911,
+            "meanRGBByteDeltaOnCommonSurface": 2.7343514518235708,
+            "sourceSilhouettePixels": 20057,
+            "runtimeSilhouettePixels": 19908
+          }
+        ],
+        "comparison": "comparison-30.png"
+      }
+    ]
+  }
+}
