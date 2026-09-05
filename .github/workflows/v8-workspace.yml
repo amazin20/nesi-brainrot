@@ -1,0 +1,26 @@
+name: V8 exact development workspace
+on:
+  push:
+    branches: ['feature/physics-campaign-v8']
+    paths: ['.github/workflows/v8-workspace.yml']
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Record exact source and export without credentials
+        run: |
+          git rev-parse HEAD > SOURCE_REVISION
+          tar --exclude='./.git' --exclude='./dist' --exclude='./qa' --exclude='./public/model-screens' --exclude='./public/concepts' -czf /tmp/nesi-v8-workspace.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nesi-v8-workspace
+          path: /tmp/nesi-v8-workspace.tgz
+          retention-days: 1

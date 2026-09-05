@@ -131,7 +131,7 @@ export function resolvePortalPlacement(panel, hitPoint, { otherPortal = null, bl
   if (portalFramesOverlap(frame, otherPortal)) return { ok: false, reason: 'overlap' };
   for (const blocker of blockers) {
     const mesh = blocker.mesh || blocker;
-    if (mesh === panel || blocker.enabled === false || mesh.userData?.portalClearance === false) continue;
+    if (mesh === panel || (metadata.portalHostCollider && metadata.portalHostCollider === mesh.uuid) || blocker.enabled === false || mesh.userData?.portalClearance === false) continue;
     const box = blocker.box || new THREE.Box3().setFromObject(mesh);
     // Supporting walls are behind the plane. The first 8 cm are a skin allowance;
     // a pillar or closed door in front still prevents an unusable opening.

@@ -180,3 +180,14 @@ body:not([data-play-state="playing"]) .lab-fps { display:none; }
 .setting-row select { max-width:70%; border:1px solid #8eaba380; background:#e0e8e0; color:#1b353b; border-radius:7px; padding:9px; }
 .setting-row input { width:18px; height:18px; }
 @media (hover:none), (pointer:coarse) { .lab-tutorial { bottom:150px; left:14px; max-width:calc(100vw - 28px); font-size:12px; } .lab-fps { bottom:auto; top:12px; right:12px; } }
+
+/* V8: settings scroll inside their own card, never the browser window. */
+#pause-screen .modal-card {max-height:90dvh;overflow:auto;width:min(560px,94vw);padding:24px 30px;}
+#pause-title {font-size:34px;margin:0 0 8px;}
+#pause-screen .secondary-button,#pause-screen .primary-button {padding:11px 16px;margin-top:7px;}
+#pause-screen .setting-row {margin:8px 0;font-size:14px;}
+#volume-range {width:60%;accent-color:#438c82;}
+.hint-card {border-top:1px solid #9dafa5;padding-top:8px;margin-top:12px;}
+.hint-card h3 {margin:0;font-size:16px;}.hint-card p {font-size:13px;line-height:1.45;}
+.hint-card button:disabled {opacity:.6;cursor:default;}
+#pause-screen .setting-row select {max-width:72%;}

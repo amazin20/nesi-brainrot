@@ -22,9 +22,9 @@
       <div class="hero-panel">
         <span class="brand">NESI <i></i> МАЛЕНЬКОЕ ПУТЕШЕСТВИЕ</span>
         <h1 id="game-title">TRANSFER<br /><span>LAB</span></h1>
-        <div class="hero-meta"><span>Три уровня · v7</span><span>Один друг</span><span>Можно не спешить</span></div>
-        <p class="lead">Пройдите три разные мастерские вдвоём. Вес друга включает механизмы; порталы возвращают его к тебе. Чекпоинтов нет. Падение в зоне восстановления не прерывает прохождение.</p>
-        <label class="setting-row">Уровень <select id="level-select"><option value="0">01 · Мост для двоих</option><option value="1">02 · Тихий атриум</option><option value="2">03 · Верхняя мастерская</option></select></label>
+        <div class="hero-meta"><span>Пять уровней · v8</span><span>Один друг</span><span>Можно не спешить</span></div>
+        <p class="lead">Соединяй светлые плиты, превращай падение в полёт и направляй импульс. Пять небольших испытаний: от первой пары порталов до головоломки с наклоном выхода.</p>
+        <label class="setting-row">Уровень <select id="level-select"></select></label>
         <button id="play-button" class="primary-button">Отправиться вместе <span aria-hidden="true">↗</span></button>
         <div class="control-grid" aria-label="Управление">
           <span><kbd>WASD</kbd> движение</span><span><kbd>Мышь</kbd> камера</span>
@@ -56,9 +56,13 @@
         <p class="muted">Продолжим с того же места.</p>
         <button id="resume-button" class="primary-button">Продолжить <span aria-hidden="true">→</span></button>
         <button id="restart-button" class="secondary-button">Начать уровень заново</button>
-        <button id="level-menu-button" class="secondary-button">Выбрать другой уровень</button>
+        <label class="setting-row">Уровень <select id="pause-level-select" aria-label="Список уровней"></select></label>
+        <button id="level-menu-button" class="secondary-button">Перейти на выбранный уровень</button>
         <label class="setting-row"><span>Обучение внизу экрана</span><input id="tutorial-toggle" type="checkbox" checked></label>
         <label class="setting-row">Графика <select id="quality-select"><option value="low">Лёгкая</option><option value="balanced" selected>Сбалансированная</option><option value="high">Высокая</option></select></label>
+        <label class="setting-row">Звук <input id="sound-toggle" type="checkbox" checked aria-label="Звук включён"></label>
+        <label class="setting-row">Громкость <input id="volume-range" type="range" min="0" max="100" value="55" aria-label="Громкость"></label>
+        <div class="hint-card"><h3>Подсказка к головоломке</h3><p id="hint-status">Правила и обучение всегда бесплатны.</p><p id="hint-text"></p><button id="hint-button" class="secondary-button">Посмотреть рекламу → открыть подсказку</button></div>
       </div>
     </section>
     <section id="win-screen" class="screen modal-screen" aria-labelledby="win-title" aria-hidden="true">

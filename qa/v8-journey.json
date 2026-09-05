@@ -1,0 +1,248 @@
+{
+  "pass": true,
+  "reports": [
+    {
+      "pass": true,
+      "level": 1,
+      "title": "01 / Первая связь",
+      "playerRespawns": 0,
+      "cargoResets": 0,
+      "sameCompanion": true,
+      "portalCrossings": [
+        {
+          "incomingSpeed": 2.9000961637542115,
+          "outgoingSpeed": 2.9000961637542115,
+          "entry": 0,
+          "exit": 1
+        }
+      ],
+      "marks": [
+        {
+          "name": "first portal with companion",
+          "player": [
+            7.105790671059331,
+            0,
+            -9.613739901997965
+          ],
+          "cargo": [
+            6.3791413511113975,
+            1.0601089715092002,
+            -9.61346775913377
+          ],
+          "teleports": 1
+        }
+      ]
+    },
+    {
+      "pass": true,
+      "level": 2,
+      "title": "02 / Падение — это скорость",
+      "playerRespawns": 0,
+      "cargoResets": 0,
+      "sameCompanion": true,
+      "portalCrossings": [
+        {
+          "incomingSpeed": 13.386043392936783,
+          "outgoingSpeed": 13.386043392936784,
+          "entry": 0,
+          "exit": 1
+        }
+      ],
+      "marks": [
+        {
+          "name": "top of ramp",
+          "player": [
+            -8.999998521543569,
+            3.55,
+            -2.2853799554520093
+          ],
+          "cargo": [
+            -9.000046548808486,
+            4.609973138116886,
+            -3.00719290298672
+          ],
+          "teleports": 0
+        },
+        {
+          "name": "momentum exit",
+          "player": [
+            -4.50555080351334,
+            4.2404100417759105,
+            -4.4068163511458
+          ],
+          "cargo": [
+            -4.349936765581518,
+            6.02740747087125,
+            -3.9551385803003547
+          ],
+          "teleports": 1
+        },
+        {
+          "name": "landing",
+          "player": [
+            5.033649644826396,
+            0,
+            -3.8725346845563564
+          ],
+          "cargo": [
+            5.492533460769975,
+            1.146236578469763,
+            -3.834903079327127
+          ],
+          "teleports": 1
+        }
+      ]
+    },
+    {
+      "pass": true,
+      "level": 3,
+      "title": "03 / Лифт гравитации",
+      "playerRespawns": 0,
+      "cargoResets": 0,
+      "sameCompanion": true,
+      "portalCrossings": [
+        {
+          "incomingSpeed": 15.925031702546672,
+          "outgoingSpeed": 15.925031702546672,
+          "entry": 0,
+          "exit": 1
+        }
+      ],
+      "marks": [
+        {
+          "name": "lift upper stop",
+          "player": [
+            -4.9999757577437425,
+            5.5,
+            3.9456491534953044
+          ],
+          "cargo": [
+            -4.999654574070666,
+            6.560000000000002,
+            3.2256492251334676
+          ],
+          "teleports": 0,
+          "lift": 5.5
+        },
+        {
+          "name": "momentum exit",
+          "player": [
+            -2.839426562363566,
+            6.005514998868234,
+            -9.348517519192152
+          ],
+          "cargo": [
+            -2.8381085294997677,
+            7.834343796780777,
+            -8.970684019708715
+          ],
+          "teleports": 1,
+          "lift": 5.5
+        },
+        {
+          "name": "landing",
+          "player": [
+            5.9193234376364225,
+            3,
+            -9.357430172008426
+          ],
+          "cargo": [
+            6.263630086594199,
+            4.306845637774826,
+            -9.363494809458517
+          ],
+          "teleports": 1,
+          "lift": 5.2807791601636955
+        }
+      ]
+    },
+    {
+      "pass": true,
+      "level": 4,
+      "title": "04 / Обратный вес",
+      "playerRespawns": 0,
+      "cargoResets": 0,
+      "sameCompanion": true,
+      "portalCrossings": [],
+      "marks": [
+        {
+          "name": "bridge crossed",
+          "player": [
+            2.5976361062081255,
+            0,
+            -5.264645982622399
+          ],
+          "cargo": [
+            -5.458444212007417,
+            0.5618104871240929,
+            7.1990210609137275
+          ],
+          "teleports": 0
+        }
+      ]
+    },
+    {
+      "pass": true,
+      "level": 5,
+      "title": "05 / Поворот импульса",
+      "playerRespawns": 0,
+      "cargoResets": 0,
+      "sameCompanion": true,
+      "portalCrossings": [
+        {
+          "incomingSpeed": 15.925031702546672,
+          "outgoingSpeed": 15.925031702546674,
+          "entry": 0,
+          "exit": 1
+        }
+      ],
+      "marks": [
+        {
+          "name": "lift upper stop",
+          "player": [
+            -5.000036406275619,
+            5.5,
+            3.938295925815476
+          ],
+          "cargo": [
+            -5.000461255504714,
+            6.560000000000002,
+            3.2182960511605323
+          ],
+          "teleports": 0,
+          "lift": 5.5
+        },
+        {
+          "name": "momentum exit",
+          "player": [
+            -4.383315867386607,
+            3.7592759829392364,
+            -12.897450208593373
+          ],
+          "cargo": [
+            -4.712609558311096,
+            5.526308332126867,
+            -12.565934709278585
+          ],
+          "teleports": 1,
+          "lift": 5.5
+        },
+        {
+          "name": "landing",
+          "player": [
+            8.655681947392539,
+            2.6,
+            -12.910707916888956
+          ],
+          "cargo": [
+            9.157400399410514,
+            3.836357514402197,
+            -12.903392649272435
+          ],
+          "teleports": 1,
+          "lift": 4.784594105460306
+        }
+      ]
+    }
+  ]
+}

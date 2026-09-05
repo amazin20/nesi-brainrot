@@ -5,11 +5,12 @@ import { LabFootContact } from './LabFootContact.js';
 // +Y forward. The rear equipment is a backpack attached to the torso.
 export const LAB_PLAYER_JOINTS = Object.freeze([
   { name: 'Body', parent: null, point: [0, 0, -0.345] },
-  { name: 'Head', parent: 'Body', point: [0, 0, -0.66] },
-  { name: 'ArmL', parent: 'Body', point: [-0.164, 0, -0.592] },
+  { name: 'Chest', parent: 'Body', point: [0, 0, -0.49] },
+  { name: 'Head', parent: 'Chest', point: [0, 0, -0.66] },
+  { name: 'ArmL', parent: 'Chest', point: [-0.164, 0, -0.592] },
   { name: 'ForearmL', parent: 'ArmL', point: [-0.211, 0.012, -0.462] },
   { name: 'HandL', parent: 'ForearmL', point: [-0.248, 0.027, -0.369] },
-  { name: 'ArmR', parent: 'Body', point: [0.176, 0, -0.592] },
+  { name: 'ArmR', parent: 'Chest', point: [0.176, 0, -0.592] },
   { name: 'ForearmR', parent: 'ArmR', point: [0.223, 0.012, -0.462] },
   { name: 'HandR', parent: 'ForearmR', point: [0.26, 0.027, -0.369] },
   { name: 'ThighL', parent: 'Body', point: [-0.093, 0, -0.345] },
@@ -60,7 +61,9 @@ export function resolveLabPlayerSkin(x, y, z, indices = new Uint16Array(4), weig
   const leg = (1 - smooth(0.305, 0.395, h)) * (1 - arm) * legSeparation;
   const head = smooth(0.635, 0.70, h);
   const body = Math.max(0, 1 - arm - leg - head);
-  add('Body', body);
+  const chest = y < -.105 ? smooth(.48, .515, h) : smooth(.46, .565, h);
+  add('Body', body * (1-chest));
+  add('Chest', body * chest);
   add('Head', head);
   if (arm > 0) {
     const upper = smooth(0.424, 0.505, h);
@@ -523,6 +526,10 @@ export class LabPlayerAnimator {
       Math.sin(cadence + 0.15) * 0.042 * moving - this.turn * 0.026);
     body.x += this.airBlend * (0.015 + 0.095 * this.ascentBlend) + this.anticipation * 0.055;
     body.y += Math.sin(cadence) * moving * 0.025;
+    // Counter-rotation separates the shoulder line from the pelvis instead
+    // of swinging the entire jacket as one rigid block. Inertia settles smoothly.
+    this.jointTargets.Chest.set(-body.x * .24 + Math.sin(this.elapsed * 1.6) * .007,
+      -body.y * .40, -Math.sin(cadence + .30) * .062 * moving + this.turn * .016);
     this.jointTargets.Head.set(-body.x * 0.6 - this.aimPitch * this.aimBlend * 0.2 + Math.sin(this.elapsed * 1.7) * 0.004,
       -body.y * 0.65 + curious * 0.065 + joy * Math.sin(expressionTime * 10) * 0.03,
       -body.z * 0.65 + Math.sin(this.elapsed * 0.85) * 0.075 * this.idleBlend
@@ -564,8 +571,8 @@ export class LabPlayerAnimator {
         -lateralRoll, this.turn * 0.018 * turnStep);
       this.footContact[side] = grounded && (planted || moving + turnStep < 0.05) ? ground : 0;
       const swingPhase = (cycle + 0.05) * Math.PI * 2;
-      const swing = clamp(Math.sin(swingPhase) * (0.27 + 0.22 * run)
-        + Math.sin(swingPhase * 2) * run * 0.035, -0.50, 0.50) * moving
+      const swing = clamp(Math.sin(swingPhase) * (0.36 + 0.20 * run)
+        + Math.sin(swingPhase * 2) * run * 0.035, -0.58, 0.58) * moving
         * (this.directionForward + this.directionRight * 0.35);
       const idle = Math.sin(this.elapsed * 1.7 + offset) * 0.016 + Math.sin(this.elapsed * 0.67 + sign) * 0.006;
       const arm = this.jointTargets[`Arm${side}`];
@@ -649,7 +656,7 @@ export class LabPlayerAnimator {
     this.carryReach.leftClamped = this.carryReach.rightClamped = false;
     if (blend < 1e-6) return;
     this.rig.mesh.updateWorldMatrix(true, true);
-    const body = this.bones.Body;
+    const body = this.bones.Chest;
     for (const [side, key] of [['L', 'left'], ['R', 'right']]) {
       const arm = this.bones[`Arm${side}`], forearm = this.bones[`Forearm${side}`], hand = this.bones[`Hand${side}`];
       const localTarget = body.worldToLocal(this.gripTargets[key].clone());

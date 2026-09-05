@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { LabGame } from '../src/game/LabGame.js';
-import { FIRST_LEVEL_ASSETS, runtimeAssetPath } from '../src/game/labAssets.js';
+import { CAMPAIGN_ASSETS, runtimeAssetPath } from '../src/game/labAssets.js';
 
 const scope = { console, TextDecoder, module: { exports: {} } };
 vm.runInNewContext(fs.readFileSync(new URL('../node_modules/three/examples/jsm/libs/draco/gltf/draco_decoder.js', import.meta.url), 'utf8'), scope);
@@ -65,7 +65,7 @@ export async function loadHeadlessGLB(file) {
 }
 
 
-export async function createHeadlessGame() {
+export async function createHeadlessGame(index = 0) {
   const game = new LabGame({ container: null, touch: false });
   game.scene = new THREE.Scene(); game.camera = new THREE.PerspectiveCamera(57, 16/9, .1, 130);
   game.materials = Object.fromEntries(['wall','floor','dark','trim','cyan','amber','glass'].map(name => [name,
@@ -78,7 +78,7 @@ export async function createHeadlessGame() {
   game.label = () => new THREE.Object3D();
   game.createOverlay = () => { game.prompt = { textContent: '' }; };
   globalThis.document = { exitPointerLock() {} };
-  for (const asset of FIRST_LEVEL_ASSETS) game.assets.set(asset.id, await loadHeadlessGLB(new URL(`../public/${runtimeAssetPath(asset)}`, import.meta.url)));
-  game.buildLevel();
+  for (const asset of CAMPAIGN_ASSETS) game.assets.set(asset.id, await loadHeadlessGLB(new URL(`../public/${runtimeAssetPath(asset)}`, import.meta.url)));
+  game.levelIndex = index; game.buildLevel();
   return game;
 }

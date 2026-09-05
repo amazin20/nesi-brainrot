@@ -1,11 +1,11 @@
-# NESI — current work
+# NESI — active V8 work
 
-- Repository: `amazin20/nesi-brainrot`; Vite / Three.js / cannon-es; `src/main.js` → `LabGame`.
-- V7 branch: `fix/portal-life-levels-v7`, based on main `f7a82c3`.
-- Release specification and limits: [RELEASE_V7.md](docs/RELEASE_V7.md).
-- Three independent playable courses; index `?level=1`, `?level=2`, `?level=3`.
-- 214 unit tests; original and new continuous real-model route harnesses; browser smoke with actual level menu/next buttons.
-- Source assets retained; runtime dependency list now 16 models.
-- Live hosting remains GitHub Pages only: https://amazin20.github.io/nesi-brainrot/
-- Deployment: `.github/workflows/deploy-pages.yml` after push to main. Never identify an unverified branch as the live published version.
-- Commands: `npm run check`; `node scripts/lab-journey.mjs`; `node scripts/v7-journey.mjs`; CI Chromium `node scripts/v7-browser.mjs`.
+- Repository: `amazin20/nesi-brainrot`; base main `e7932259b672e13d08c8b1c4b5be1fd2725dd82f`.
+- Vite / Three.js / cannon-es; active game `src/main.js` → `LabGame` → `LabCampaignV8`.
+- Five new layouts; none of the three V7 layouts is the active first course.
+- Shared source GLBs preserved; 12 useful campaign assets packaged, only 6 loaded in tutorial; lazy new-mechanic loading.
+- Implementation and limits: `docs/RELEASE_V8.md`; model requests / 100-course direction: `docs/NEXT_MODELS_V8.md`.
+- `npm test`, `npm run build`, `node scripts/v8-journey.mjs`, `node scripts/v8-browser.mjs`.
+- GitHub Pages is the only demo host: https://amazin20.github.io/nesi-brainrot/
+- `npm run build:yandex` emits a separate `/sdk.js`-enabled upload build. Real advertisement availability must be checked in the Yandex draft. GitHub preview hints are explicitly free.
+- No device FPS or professionally authored mocap quality claim. No concept image is a gameplay screenshot.
