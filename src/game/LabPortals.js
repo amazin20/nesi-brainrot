@@ -132,6 +132,13 @@ export function resolvePortalPlacement(panel, hitPoint, { otherPortal = null, bl
   for (const blocker of blockers) {
     const mesh = blocker.mesh || blocker;
     if (mesh === panel || blocker.enabled === false || mesh.userData?.portalClearance === false) continue;
+    // A tilted plate's axis-aligned proxy encloses empty space in front.
+    // Exempt only THIS registered support, never nearby crates, pillars or doors.
+    if (mesh.uuid === metadata.portalColliderId && blocker.frontPlane) {
+      const support = blocker.frontPlane();
+      if (support?.normal && Math.abs(support.normal.dot(frame.normal)) > .999
+        && Math.abs(frame.position.clone().sub(support.center).dot(support.normal)) < .04) continue;
+    }
     const box = blocker.box || new THREE.Box3().setFromObject(mesh);
     // Supporting walls are behind the plane. The first 8 cm are a skin allowance;
     // a pillar or closed door in front still prevents an unusable opening.

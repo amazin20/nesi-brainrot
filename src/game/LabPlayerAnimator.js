@@ -65,11 +65,11 @@ export class LabPlayerAnimator extends BaseAnimator{
     this.reset();
   }
   reset(){
-    super.reset();
+    super.reset();this.flightBrace=0;
     if(this.bones.Chest){this.bones.Chest.quaternion.identity();this.basePose?.Chest?.identity();this.bones.Chest.position.copy(this.rig.rest.Chest);this.rig.mesh.updateWorldMatrix(true,true);this.rig.skeleton.update();this.snapCarrierToBody();}
   }
   update(input={}){super.update(input);this.basePose.Chest.copy(this.bones.Chest.quaternion);}
-  get diagnostics(){return {...super.diagnostics,boneCount:LAB_PLAYER_JOINTS.length,profile:'ribcage-counterrotation-v9',chestIndependent:true};}
+  get diagnostics(){return {...super.diagnostics,boneCount:LAB_PLAYER_JOINTS.length,profile:'flight-brace-v10',chestIndependent:true};}
   stepPose(input){
     this.headBefore.copy(this.bones.Head.quaternion);super.stepPose(input);
     const dt=input.dt||0,run=smooth(2.5,5.7,this.speed),moving=this.moveBlend*(1-this.airBlend);
@@ -77,6 +77,11 @@ export class LabPlayerAnimator extends BaseAnimator{
     this.chestTarget.set(-body.x*.24+.018*this.carryBlend+Math.sin(this.elapsed*1.6)*.006*this.idleBlend+this.airBlend*.045*(1-this.ascentBlend),
       -body.y*.45+Math.sin(cadence-.45)*.026*moving*relaxed,
       -Math.sin(cadence-.22)*.105*moving*relaxed+this.turn*.016);
+    // A fast portal flight has a held, braced silhouette, not a walking loop.
+    const flight=this.airBlend*smooth(6,14,Math.hypot(input.velocity?.x||0,input.velocity?.z||0));
+    this.flightBrace=THREE.MathUtils.damp(this.flightBrace||0,flight,9,dt);
+    this.chestTarget.x+=.075*this.flightBrace*(1-.65*this.carryBlend);
+    this.chestTarget.y-=this.turn*.018*this.flightBrace;
     this.chestQuaternion.setFromEuler(this.chestTarget);
     this.bones.Chest.quaternion.slerp(this.chestQuaternion,1-Math.exp(-12*dt));
     const head=this.jointTargets.Head;
@@ -85,6 +90,7 @@ export class LabPlayerAnimator extends BaseAnimator{
     // Slightly wider free-arm travel without disturbing the held-device hand.
     const free=(1-this.carryBlend)*(1-this.interactionBlend)*(1-this.aimBlend);
     this.bones.ArmL.rotateX(Math.sin(cadence+.31)*(.009+.004*run)*moving*free*dt*60);
+    this.bones.ArmL.rotateZ(-.035*this.flightBrace*free);
   }
   applyCarryReach(){
     const blend=smooth(.01,.985,this.reachBlend);this.carryReach.blend=blend;
