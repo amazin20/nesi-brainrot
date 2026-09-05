@@ -26,7 +26,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          fs.writeFileSync('dist/build-info.json', JSON.stringify({ commit: process.env.GITHUB_SHA, branch: process.env.GITHUB_REF_NAME, builtAt: new Date().toISOString() }) + '\n');
+          fs.writeFileSync('dist/build-info.json', JSON.stringify({ commit: process.env.GITHUB_SHA, version: 'v7', branch: process.env.GITHUB_REF_NAME, builtAt: new Date().toISOString() }) + '\n');
           NODE
       - name: Upload playable production build
         uses: actions/upload-artifact@v4
@@ -34,9 +34,12 @@ jobs:
           name: nesi-playable-build
           path: dist/
           retention-days: 14
-      - name: Full route on actual model geometry
-        run: node scripts/lab-journey.mjs
+      - name: Full routes on actual model geometry
+        run: |
+          node scripts/lab-journey.mjs
+          node scripts/v7-journey.mjs
       - name: Install video encoder
+        if: github.event_name == 'workflow_dispatch'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
@@ -55,9 +58,9 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import { FIRST_LEVEL_ASSETS, runtimeAssetPath } from './src/game/labAssets.js';
-          if (FIRST_LEVEL_ASSETS.length !== 18) throw new Error('Expected 18 level dependencies');
+          if (FIRST_LEVEL_ASSETS.length !== 16) throw new Error('Expected 16 campaign dependencies');
           const manifest = JSON.parse(fs.readFileSync('dist/models/runtime/manifest.json'));
-          if (manifest.models.length !== 18) throw new Error('Packaged inventory mismatch');
+          if (manifest.models.length !== FIRST_LEVEL_ASSETS.length) throw new Error('Packaged inventory mismatch');
           let modelBytes = 0;
           for (const asset of FIRST_LEVEL_ASSETS) {
             const file = 'dist/' + runtimeAssetPath(asset);
@@ -73,7 +76,7 @@ jobs:
           CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
           test -n "$CHROME_PATH"
           export CHROME_PATH
-          node scripts/lab-smoke.mjs
+          node scripts/v7-browser.mjs
       - name: Upload gameplay and stills before recording
         if: always()
         uses: actions/upload-artifact@v4
@@ -82,8 +85,11 @@ jobs:
           path: |
             smoke-artifacts/report.json
             smoke-artifacts/*.png
+            qa/continuous-journey.json
+            qa/v7-campaign.json
           if-no-files-found: warn
       - name: Record 600 production animation frames
+        if: github.event_name == 'workflow_dispatch'
         timeout-minutes: 75
         env:
           RECORD_VIDEO: '1'

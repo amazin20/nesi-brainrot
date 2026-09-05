@@ -29,14 +29,17 @@ jobs:
         run: npm ci
       - name: Test and build
         run: npm run check
-      - name: Check full route on real model geometry
-        run: node scripts/lab-journey.mjs
+      - name: Check full routes on real model geometry
+        run: |
+          node scripts/lab-journey.mjs
+          node scripts/v7-journey.mjs
       - name: Record deployed revision
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           fs.writeFileSync('dist/build-info.json', JSON.stringify({
             commit: process.env.GITHUB_SHA,
+            version: 'v7',
             repository: process.env.GITHUB_REPOSITORY,
             run: process.env.GITHUB_RUN_ID
           }, null, 2) + '\n');
@@ -58,3 +61,28 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify public deployed revision
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python3 - <<'PY'
+          import os,json,time,urllib.request
+          url=os.environ['PAGE_URL'].rstrip('/')+'/'
+          expected=os.environ['GITHUB_SHA']
+          for attempt in range(30):
+              try:
+                  req=urllib.request.Request(url+'build-info.json?revision='+expected+'&attempt='+str(attempt),headers={'Cache-Control':'no-cache'})
+                  with urllib.request.urlopen(req,timeout=20) as response:
+                      info=json.load(response)
+                  if info.get('commit')==expected:
+                      with urllib.request.urlopen(url+'?verify='+expected,timeout=20) as response:
+                          html=response.read().decode()
+                      assert 'level-select' in html, 'Missing campaign menu in published HTML'
+                      print('Live revision confirmed:',info['commit'],url)
+                      break
+              except Exception as error:
+                  print('Publication check:',type(error).__name__,str(error))
+              time.sleep(5)
+          else:
+              raise SystemExit('Public build did not match deployed commit')
+          PY
