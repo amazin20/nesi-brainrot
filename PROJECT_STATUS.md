@@ -1,11 +1,10 @@
-# NESI — current work
+# NESI current work — V8
 
-- Repository: `amazin20/nesi-brainrot`; Vite / Three.js / cannon-es; `src/main.js` → `LabGame`.
-- V7 branch: `fix/portal-life-levels-v7`, based on main `f7a82c3`.
-- Release specification and limits: [RELEASE_V7.md](docs/RELEASE_V7.md).
-- Three independent playable courses; index `?level=1`, `?level=2`, `?level=3`.
-- 214 unit tests; original and new continuous real-model route harnesses; browser smoke with actual level menu/next buttons.
-- Source assets retained; runtime dependency list now 16 models.
-- Live hosting remains GitHub Pages only: https://amazin20.github.io/nesi-brainrot/
-- Deployment: `.github/workflows/deploy-pages.yml` after push to main. Never identify an unverified branch as the live published version.
-- Commands: `npm run check`; `node scripts/lab-journey.mjs`; `node scripts/v7-journey.mjs`; CI Chromium `node scripts/v7-browser.mjs`.
+- Source: `amazin20/nesi-brainrot`, base main `e7932259`. Working branch `feature/tiled-physics-five-v8`.
+- Five new independent tiled portal-physics courses, progressively introduced mechanics, original model/rig cache retained.
+- Entry: `src/main.js` → `LabGame` → `LabCampaignLevels`; old `LabFirstLevel`/V7 evidence are historical fixtures, not the active campaign.
+- Scope and honest limits: `docs/RELEASE_V8.md`; 100-level roadmap: `docs/CAMPAIGN_DESIGN_V8.md`.
+- Validation: `npm run check`; `node scripts/v8-journey.mjs`; `node scripts/v8-package-check.mjs`; Chromium `scripts/v8-browser.mjs` and `scripts/v8-yandex-browser.mjs` (SDK stub, not real ad fill).
+- GitHub demo: normal build, free hints, no pretend adverts. Yandex build: `npm run build -- --mode yandex --outDir dist-yandex`.
+- Hosting remains GitHub Pages. Production only after CI and inspection; do not replace missing proof with concept images.
+- Full level selection and restart, no progress checkpoints. No automatic later work or hourly results promised.

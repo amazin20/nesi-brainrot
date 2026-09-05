@@ -153,12 +153,19 @@ export function solveLabLeg(forward, down, upperLength = 0.117, lowerLength = Ma
 export function sampleLabFootCycle(cycle, stride, run = 0) {
   cycle = ((cycle % 1) + 1) % 1;
   const stance = THREE.MathUtils.lerp(.57, .44, clamp(run, 0, 1));
-  if (cycle < stance) return { path: stride * (1 - 2 * cycle / stance), lift: 0, planted: true };
+  if (cycle < stance) {
+    const u=cycle/stance;
+    // Heel reception -> flat support -> toe roll. Separate foot articulation
+    // prevents the previous flat-shoe pendulum, without stretching the legs.
+    const roll=-.14*(1-smooth(0,.24,u))+.25*smooth(.70,1,u);
+    return {path:stride*(1-2*u),lift:0,planted:true,roll};
+  }
   const t = (cycle - stance) / (1 - stance);
   const tangent = -2 * (1 - stance) / stance;
   const ease = t * t * t * (10 + t * (-15 + 6 * t));
   return { path: stride * (-1 + tangent * t + (2 - tangent) * ease),
-    lift: Math.sin(t * Math.PI) ** 4 * (0.033 + 0.047 * run), planted: false };
+    lift: Math.sin((t + .11*Math.sin(2*Math.PI*t)/(2*Math.PI)) * Math.PI) ** 4 * (0.043 + 0.037 * run),
+    roll:THREE.MathUtils.lerp(.25,-.14,smooth(0,1,t)),planted:false };
 }
 
 /** Solve a fixed-length anatomical arm in its shoulder-parent coordinates.
@@ -475,7 +482,7 @@ export class LabPlayerAnimator {
       if (expressionTime >= this.expression.duration) this.expression = null;
     }
     const run = smooth(2.5, 5.7, this.speed);
-    const stride = THREE.MathUtils.lerp(0.061, 0.110, run);
+    const stride = THREE.MathUtils.lerp(0.070, 0.110, run) * (1 - .10 * this.carryBlend);
     const turning = smooth(0.2, 1.8, Math.abs(this.turn)) * (1 - this.moveBlend);
     // Cadence is an authored rhythm, independent of the unusually short source
     // legs. Deriving it from their length produced nine frantic footfalls/s.
@@ -515,14 +522,14 @@ export class LabPlayerAnimator {
     const compression = (0.012 + run * 0.011 - strideBounce) * moving + 0.004 * turnStep - this.landing;
     this.bones.Body.position.copy(this.rig.rest.Body);
     this.bones.Body.position.z += compression + this.interactionBlend * 0.011 + this.anticipation * 0.014 - hop * 0.012;
-    this.bones.Body.position.x += Math.sin(cadence) * moving * (0.0035 + run * 0.0025);
+    this.bones.Body.position.x += Math.sin(cadence - .18) * moving * (0.006 + run * 0.0025);
     const body = this.jointTargets.Body;
     body.set((0.050 + .070 * run) * moving * this.directionForward + 0.115 * this.inertiaForward * ground
       + 0.05 * this.carryBlend + this.interactionBlend * 0.095 - this.landing * 0.55,
       -0.043 * moving * this.directionRight - 0.060 * this.inertiaRight * ground,
-      Math.sin(cadence + 0.15) * 0.042 * moving - this.turn * 0.026);
+      Math.sin(cadence + 0.15) * 0.071 * moving - this.turn * 0.026);
     body.x += this.airBlend * (0.015 + 0.095 * this.ascentBlend) + this.anticipation * 0.055;
-    body.y += Math.sin(cadence) * moving * 0.025;
+    body.y += Math.sin(cadence - .28) * moving * 0.046;
     this.jointTargets.Head.set(-body.x * 0.6 - this.aimPitch * this.aimBlend * 0.2 + Math.sin(this.elapsed * 1.7) * 0.004,
       -body.y * 0.65 + curious * 0.065 + joy * Math.sin(expressionTime * 10) * 0.03,
       -body.z * 0.65 + Math.sin(this.elapsed * 0.85) * 0.075 * this.idleBlend
@@ -538,7 +545,7 @@ export class LabPlayerAnimator {
 
     for (const [side, offset, sign] of [['L', 0, -1], ['R', 0.5, 1]]) {
       const cycle = (this.gait + offset) % 1;
-      let { path, lift, planted } = sampleLabFootCycle(cycle, stride, run);
+      let { path, lift, planted, roll } = sampleLabFootCycle(cycle, stride, run);
       const turnPath = (path / stride) * sign * Math.sign(this.turn) * 0.021 * turnStep;
       const forward = path * moving * this.directionForward * (this.directionForward < 0 ? 0.82 : 1) + turnPath + 0.015;
       const lateral = path * moving * this.directionRight * 0.65;
@@ -560,21 +567,21 @@ export class LabPlayerAnimator {
       this.jointTargets[`Thigh${side}`].set(leg.hip * legBlend - jumpFold * this.airBlend,
         lateralRoll, sign * 0.012 * moving - this.turn * 0.018 * turnStep);
       this.jointTargets[`Shin${side}`].set(leg.knee * legBlend + jumpFold * 1.75 * this.airBlend, 0, 0);
-      this.jointTargets[`Foot${side}`].set(leg.ankle * legBlend - jumpFold * 0.65 * this.airBlend,
+      this.jointTargets[`Foot${side}`].set(leg.ankle * legBlend + roll * moving * (1 - .3*this.carryBlend) - jumpFold * 0.65 * this.airBlend,
         -lateralRoll, this.turn * 0.018 * turnStep);
       this.footContact[side] = grounded && (planted || moving + turnStep < 0.05) ? ground : 0;
       const swingPhase = (cycle + 0.05) * Math.PI * 2;
-      const swing = clamp(Math.sin(swingPhase) * (0.27 + 0.22 * run)
-        + Math.sin(swingPhase * 2) * run * 0.035, -0.50, 0.50) * moving
+      const swing = clamp(Math.sin(swingPhase) * (0.40 + 0.12 * run)
+        + Math.sin(swingPhase * 2 -.22) * (0.025 + run * 0.025), -0.55, 0.55) * moving
         * (this.directionForward + this.directionRight * 0.35);
       const idle = Math.sin(this.elapsed * 1.7 + offset) * 0.016 + Math.sin(this.elapsed * 0.67 + sign) * 0.006;
       const arm = this.jointTargets[`Arm${side}`];
       const forearm = this.jointTargets[`Forearm${side}`];
       const hand = this.jointTargets[`Hand${side}`];
       arm.set(swing + idle - this.airBlend * (0.17 + this.ascentBlend * 0.16)
-        - this.anticipation * 0.11, sign * (0.04 + this.airBlend * 0.025),
+        - this.anticipation * 0.11, sign * (0.04 + this.airBlend * 0.025 + moving * Math.sin(swingPhase - .3) * .024),
         sign * this.airBlend * (0.07 + (1 - this.ascentBlend) * 0.04));
-      forearm.set(-0.09 - Math.max(0, -swing) * 0.40 - this.airBlend * (0.10 + this.ascentBlend * 0.17), 0, 0);
+      forearm.set(-0.09 - Math.max(0, -Math.sin(swingPhase-.32)) * moving * (0.19+.12*run) - this.airBlend * (0.10 + this.ascentBlend * 0.17), 0, 0);
       hand.set(0.02 + Math.sin(swingPhase - .35) * moving * .035, 0,
         side === 'L' ? Math.sin(swingPhase + 0.4) * (.03 + run * .025) * moving : 0);
       if (side === 'L') {
@@ -591,7 +598,7 @@ export class LabPlayerAnimator {
         const hold = this.weaponBlend;
         // Moderate shoulder/elbow bends preserve the joined jacket sleeve.
         // Most vertical aim belongs to the wrist; the device follows HandR.
-        arm.x = THREE.MathUtils.lerp(arm.x, -0.21 - this.aimBlend * 0.19 - pitch * 0.12 + swing * (0.42 - .34 * this.aimBlend) + this.recoil * 0.025, hold);
+        arm.x = THREE.MathUtils.lerp(arm.x, -0.21 - this.aimBlend * 0.19 - pitch * 0.12 + swing * (0.37 - .29 * this.aimBlend) + this.recoil * 0.025, hold);
         arm.y = THREE.MathUtils.lerp(arm.y, 0.045 + counterSwing * moving * .025 * (1 - this.aimBlend), hold);
         arm.z = THREE.MathUtils.lerp(arm.z, 0.025, hold);
         forearm.x = THREE.MathUtils.lerp(forearm.x, -0.44 + .10 * moving * (1 - this.aimBlend) - this.aimBlend * 0.10 - pitch * 0.14 - Math.sin(swingPhase - .4) * moving * .085 * (1 - this.aimBlend) - this.recoil * 0.055, hold);
