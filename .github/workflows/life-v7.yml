@@ -1,0 +1,29 @@
+name: V7 regression workspace
+on:
+  push:
+    branches: ['fix/portal-life-levels-v7']
+permissions:
+  contents: read
+concurrency:
+  group: v7-regression-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Export exact source and dependencies for offline regression
+        run: tar --exclude='./.git' --exclude='./public' --exclude='./dist' --exclude='./qa' -czf /tmp/nesi-workspace.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nesi-workspace
+          path: /tmp/nesi-workspace.tgz
+          retention-days: 1
