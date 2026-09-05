@@ -1,0 +1,156 @@
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -51 +51 @@
+-    <nav class="play-tools" aria-label="Меню игры"><button id="quick-hint" class="icon-button" aria-label="Подсказки">?</button><button id="quick-settings" class="icon-button" aria-label="Пауза и настройки">Ⅱ</button></nav>
++    <nav class="play-tools" aria-label="Меню игры"><span id="level-number" class="level-number" aria-label="Текущий уровень">УРОВЕНЬ 01</span><button id="quick-settings" class="icon-button" aria-label="Пауза и настройки">Ⅱ</button></nav>
+diff --git a/scripts/v8-browser.mjs b/scripts/v8-browser.mjs
+--- a/scripts/v8-browser.mjs
++++ b/scripts/v8-browser.mjs
+@@ -3,0 +4 @@
++import {CAMPAIGN} from '../src/game/LabCampaignLevels.js';
+@@ -14 +15 @@
+- assert.equal(await page.$$eval('#level-select option',a=>a.length),5);assert.equal(requests.length,4);
++ assert.equal(await page.$$eval('#level-select option',a=>a.length),CAMPAIGN.length);assert.equal(requests.length,4);
+@@ -20 +21 @@
+- for(let index=0;index<5;index++){
++ for(let index=0;index<CAMPAIGN.length;index++){
+@@ -23 +24,2 @@
+-   await shot(`level-${index+1}-complete`);
++   assert.equal(await page.$eval('#level-number',e=>e.textContent),`УРОВЕНЬ ${String(index+1).padStart(2,'0')}`);
++   assert.equal(await page.$('#quick-hint'),null);await shot(`level-${index+1}-complete`);
+@@ -58 +60 @@
+- fs.writeFileSync(`${out}/report.json`,JSON.stringify(report,null,2));console.log('V8 WebGL: five actual routes, lazy assets, menus, sound and persistence passed.');
++ fs.writeFileSync(`${out}/report.json`,JSON.stringify(report,null,2));console.log('Campaign WebGL: all active routes, lazy assets, menus, sound and persistence passed.');
+diff --git a/scripts/v8-journey.mjs b/scripts/v8-journey.mjs
+--- a/scripts/v8-journey.mjs
++++ b/scripts/v8-journey.mjs
+@@ -3,0 +4 @@
++import {CAMPAIGN} from '../src/game/LabCampaignLevels.js';
+@@ -6 +7 @@
+-for(const index of process.argv[2]?[Number(process.argv[2])-1]:[0,1,2,3,4]){
++for(const index of process.argv[2]?[Number(process.argv[2])-1]:CAMPAIGN.map((_,i)=>i)){
+diff --git a/src/game/LabCampaignLevels.js b/src/game/LabCampaignLevels.js
+--- a/src/game/LabCampaignLevels.js
++++ b/src/game/LabCampaignLevels.js
+@@ -62 +62 @@
+-  function doorway(z,pad,roomWidth=16,ceiling=6) {
++  function doorway(z,pad,roomWidth=16,ceiling=9) {
+@@ -95 +95 @@
+-    bounds={minX:-7,maxX:7,minZ:-10,maxZ:14};spawn=[0,5,8];cargoSpawn=[1.2,5.55,6.5];
++    bounds={minX:-7,maxX:7,minZ:-16,maxZ:14};spawn=[0,5,8];cargoSpawn=[1.2,5.55,6.5];
+@@ -102,2 +102,2 @@
+-    patch('fling',[-6.8,4.2,-5],[1,0,0],4,4);
+-    world.floor(.3,7,-8,-2.6,1);goal=world.goal([4.7,1,-5.2],[3.8,4]);
++    patch('fling',[-6.8,4.2,-11],[1,0,0],4,4);
++    world.floor(.3,7,-14,-8.6,1);goal=world.goal([4.7,1,-11.2],[3.8,4]);
+@@ -123 +123 @@
+-    bounds={minX:-11,maxX:8,minZ:-10,maxZ:14};spawn=[-6,5,-3];cargoSpawn=[-4.8,5.55,-2];
++    bounds={minX:-11,maxX:14,minZ:-10,maxZ:14};spawn=[-6,5,-3];cargoSpawn=[-4.8,5.55,-2];
+@@ -128 +128 @@
+-    const art=prop('changes exit momentum direction',28,7.5,[3,0,-5],Math.PI);
++    const art=prop('changes exit momentum direction',28,7.5,[9,0,-5],Math.PI);
+@@ -131 +131 @@
+-    art.position.add(V(3,4.2,-5).sub(mechanism.getPortalFrame().center));mechanism.update(0);
++    art.position.add(V(9,4.2,-5).sub(mechanism.getPortalFrame().center));mechanism.update(0);
+@@ -148 +148 @@
+-    world.floor(-.2,7,4.5,13.8,3.5);goal=world.goal([3,3.5,9.7],[4.4,4.5]);
++    world.floor(5.8,13,4.5,13.8,3.5);goal=world.goal([9,3.5,9.7],[4.4,4.5]);
+diff --git a/src/game/LabCompanionRig.js b/src/game/LabCompanionRig.js
+--- a/src/game/LabCompanionRig.js
++++ b/src/game/LabCompanionRig.js
+@@ -52 +52 @@
+-    this.phase = this.walk = this.alert = 0;
++    this.phase = this.walk = this.alert = this.flightBrace = 0;
+@@ -63,0 +64,2 @@
++    // Carried high-speed flight: small fin/foot bracing, without moving the grip or body.
++    this.flightBrace=THREE.MathUtils.damp(this.flightBrace||0,carrying&&!grounded?THREE.MathUtils.clamp((speed-5)/9,0,1):0,9,dt);
+@@ -66,0 +69 @@
++    this.bones.Tail.rotation.z+=Math.sin(t*4.2)*.025*this.flightBrace;
+@@ -68,2 +71,2 @@
+-      this.bones[`Fin${side}`].rotation.x = sign * (Math.sin(t * 2.7) * .04 + wave * .07 * this.walk) * this.alert;
+-      this.bones[`Foot${side}`].rotation.y = sign * wave * .12 * this.walk + (recovering ? sign * Math.sin(t * 8) * .055 : 0);
++      this.bones[`Fin${side}`].rotation.x = sign * (Math.sin(t * 2.7) * .04 + wave * .07 * this.walk) * this.alert + sign*.14*this.flightBrace;
++      this.bones[`Foot${side}`].rotation.y = sign * wave * .12 * this.walk + (recovering ? sign * Math.sin(t * 8) * .055 : 0)+sign*.045*this.flightBrace;
+diff --git a/src/game/LabGame.js b/src/game/LabGame.js
+--- a/src/game/LabGame.js
++++ b/src/game/LabGame.js
+@@ -717,0 +718,7 @@
++    if (this.externalBlocked || this.state !== 'playing') return false;
++    // E puts down a held friend. Nearby controls must not steal pickup input.
++    if (this.heldCube) return this.toggleCube();
++    const hand = this.playerPosition.clone().addScaledVector(UP, 1.1);
++    const controlDistance = Math.min(Infinity, ...(this.firstLevel?.terminals ?? []).map(t => hand.distanceTo(t.position)));
++    if (this.cargo && hand.distanceTo(this.cargo.position) < Math.min(2.25, controlDistance)
++      && this.toggleCube()) return true;
+diff --git a/src/game/LabPlayerAnimator.js b/src/game/LabPlayerAnimator.js
+--- a/src/game/LabPlayerAnimator.js
++++ b/src/game/LabPlayerAnimator.js
+@@ -68 +68 @@
+-    super.reset();
++    super.reset();this.flightBrace=0;
+@@ -72 +72 @@
+-  get diagnostics(){return {...super.diagnostics,boneCount:LAB_PLAYER_JOINTS.length,profile:'ribcage-counterrotation-v9',chestIndependent:true};}
++  get diagnostics(){return {...super.diagnostics,boneCount:LAB_PLAYER_JOINTS.length,profile:'flight-brace-v10',chestIndependent:true};}
+@@ -79,0 +80,5 @@
++    // A fast portal flight has a held, braced silhouette, not a walking loop.
++    const flight=this.airBlend*smooth(6,14,Math.hypot(input.velocity?.x||0,input.velocity?.z||0));
++    this.flightBrace=THREE.MathUtils.damp(this.flightBrace||0,flight,9,dt);
++    this.chestTarget.x+=.075*this.flightBrace*(1-.65*this.carryBlend);
++    this.chestTarget.y-=this.turn*.018*this.flightBrace;
+@@ -87,0 +93 @@
++    this.bones.ArmL.rotateZ(-.035*this.flightBrace*free);
+diff --git a/src/game/LabPortals.js b/src/game/LabPortals.js
+--- a/src/game/LabPortals.js
++++ b/src/game/LabPortals.js
+@@ -134,0 +135,7 @@
++    // A tilted plate's axis-aligned proxy encloses empty space in front.
++    // Exempt only THIS registered support, never nearby crates, pillars or doors.
++    if (mesh.uuid === metadata.portalColliderId && blocker.frontPlane) {
++      const support = blocker.frontPlane();
++      if (support?.normal && Math.abs(support.normal.dot(frame.normal)) > .999
++        && Math.abs(frame.position.clone().sub(support.center).dot(support.normal)) < .04) continue;
++    }
+diff --git a/src/game/LabV8Journey.js b/src/game/LabV8Journey.js
+--- a/src/game/LabV8Journey.js
++++ b/src/game/LabV8Journey.js
+@@ -38 +38,3 @@
+-      game.scene.updateMatrixWorld(true);const ndc=point.clone().project(game.camera);
++      game.scene.updateMatrixWorld(true);
++      if(point.clone().sub(game.camera.position).dot(game.camera.getWorldDirection(V()))<0){game.yaw+=.18;frame();continue;}
++      const ndc=point.clone().project(game.camera);
+@@ -76 +78 @@
+-      walk(1.2,7.5);pickup();walk(0,5);fallFromEdge(2.35,-1);walk(4.7,-5.2);
++      walk(1.2,7.5);pickup();walk(0,5);fallFromEdge(2.35,-1);walk(4.7,-11.2);
+@@ -84 +86,2 @@
+-      walk(-4.8,-1);pickup();walk(-6,1);fallFromEdge(2.65,1);walk(3,9.7);
++      aim(1,level.receiverPanel.mechanism.getPortalFrame().center);
++      walk(-4.8,-1);pickup();walk(-6,1);fallFromEdge(2.65,1);walk(9,9.7);
+diff --git a/src/main.js b/src/main.js
+--- a/src/main.js
++++ b/src/main.js
+@@ -25 +25 @@
+-function pauseInfo(){ $('#settings-level-select').value=String(game.levelIndex);$('#pause-course').textContent=`${game.levelIndex+1} / 5 · ${CAMPAIGN[game.levelIndex].title}`;$('#hint-detail').hidden=true;}
++function pauseInfo(){ $('#settings-level-select').value=String(game.levelIndex);$('#pause-course').textContent=`${game.levelIndex+1} / ${CAMPAIGN.length} · ${CAMPAIGN[game.levelIndex].title}`;$('#hint-detail').hidden=true;}
+@@ -42 +42 @@
+-  onHud:({chamber,objective,hasCargo,portalsReady})=>{$('#chamber').textContent=chamber;$('#objective').textContent=objective||'';$('#cargo-status').textContent=hasCargo?'Друг на руках':'Друг ждёт';$('#portal-status').textContent=portalsReady?'Связаны':'Два портала';},
++  onHud:({chamber,objective,hasCargo,portalsReady})=>{$('#level-number').textContent=`УРОВЕНЬ ${String(game.levelIndex+1).padStart(2,'0')}`;$('#chamber').textContent=chamber;$('#objective').textContent=objective||'';$('#cargo-status').textContent=hasCargo?'Друг на руках':'Друг ждёт';$('#portal-status').textContent=portalsReady?'Связаны':'Два портала';},
+@@ -48 +48 @@
+-    $('#win-screen .muted').textContent=last?'Пять первых испытаний завершены. Друг добрался вместе с тобой.':'Получилось! Следующее испытание добавит новую идею.';diagnostics();},
++    $('#win-screen .muted').textContent=last?'Все доступные испытания завершены. Друг добрался вместе с тобой.':'Получилось! Следующее испытание добавит новую идею.';diagnostics();},
+@@ -74 +74 @@
+-$('#quick-hint').addEventListener('click',()=>{game.togglePause(true);showHints();});$('#hint-button').addEventListener('click',showHints);
++$('#hint-button').addEventListener('click',showHints);
+diff --git a/src/styles.css b/src/styles.css
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -193,0 +194,3 @@
++
++/* The level readout is not a button. Hints remain in the Esc pause menu. */
++.level-number{align-self:center;padding:8px 12px;border-radius:8px;background:#152128d9;color:#e6eff1;font-size:13px;font-weight:700;letter-spacing:.09em;pointer-events:none;user-select:none;}
+diff --git a/tests/lab-v8-campaign.test.js b/tests/lab-v8-campaign.test.js
+--- a/tests/lab-v8-campaign.test.js
++++ b/tests/lab-v8-campaign.test.js
+@@ -10 +10 @@
+- assert.equal(CAMPAIGN.length,5);assert.equal(CAMPAIGN[0].assets.length,4);assert.deepEqual([...new Set(CAMPAIGN.flatMap(l=>l.assets))].sort((a,b)=>a-b),[...CAMPAIGN_ASSET_IDS]);
++ assert.ok(CAMPAIGN.length>=5);assert.equal(CAMPAIGN[0].assets.length,4);assert.deepEqual([...new Set(CAMPAIGN.flatMap(l=>l.assets))].sort((a,b)=>a-b),[...CAMPAIGN_ASSET_IDS]);
