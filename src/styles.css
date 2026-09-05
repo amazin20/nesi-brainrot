@@ -116,7 +116,7 @@ body[data-play-state='playing'] .lab-reticle, body[data-play-state='playing'] .l
   .objective-card { max-width: min(380px,75vw); padding: 12px; }
   .toast { top: 110px; }
 }
-@media (hover: none), (pointer: coarse) {
+@media (pointer: coarse) {
   .control-grid, .desktop-note { display: none; }
   .mobile-note { display: block; }
   .mobile-controls--active { display: flex; }
@@ -179,4 +179,15 @@ body:not([data-play-state="playing"]) .lab-fps { display:none; }
 .setting-row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:14px 0; font-size:14px; }
 .setting-row select { max-width:70%; border:1px solid #8eaba380; background:#e0e8e0; color:#1b353b; border-radius:7px; padding:9px; }
 .setting-row input { width:18px; height:18px; }
-@media (hover:none), (pointer:coarse) { .lab-tutorial { bottom:150px; left:14px; max-width:calc(100vw - 28px); font-size:12px; } .lab-fps { bottom:auto; top:12px; right:12px; } }
+@media (pointer:coarse) { .lab-tutorial { bottom:150px; left:14px; max-width:calc(100vw - 28px); font-size:12px; } .lab-fps { bottom:auto; top:12px; right:12px; } }
+/* V8: compact controls only; all longer text stays in menus. */
+.play-tools { position:fixed;right:18px;top:18px;z-index:20;display:flex;gap:8px; }
+body:not([data-play-state="playing"]) .play-tools {display:none;}
+body[data-external-pause="true"] .play-tools,body[data-external-pause="true"] .lab-mobile {pointer-events:none;}
+.setting-row input[type="range"] {width:55%;height:24px;accent-color:#6dbaaa;}
+.modal-screen {overflow-y:auto;touch-action:pan-y;}
+.modal-card {max-height:calc(100dvh - 48px);overflow-y:auto;touch-action:pan-y;}
+#hint-detail {border:1px solid #7daba94d;border-radius:10px;padding:12px 15px;margin:12px 0;font-size:14px;line-height:1.55;}
+#hint-detail[hidden] {display:none;} #hint-detail p {margin:8px 0;}
+#hint-detail .muted {font-size:12px;} .secondary-button:disabled {opacity:.5;cursor:wait;}
+@media (pointer:coarse) {.play-tools {right:18px;top:45px;}.modal-card{max-height:calc(100dvh - 30px);}}

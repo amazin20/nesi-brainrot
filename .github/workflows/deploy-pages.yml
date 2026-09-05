@@ -1,88 +1,87 @@
-name: Deploy game to GitHub Pages
-
+name: Deploy verified five-level game
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
   group: pages
   cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - name: Install dependencies
-        run: npm ci
-      - name: Test and build
-        run: npm run check
-      - name: Check full routes on real model geometry
         run: |
-          node scripts/lab-journey.mjs
-          node scripts/v7-journey.mjs
-      - name: Record deployed revision
+          npm ci
+          npm install --no-save --package-lock=false puppeteer-core@24.16.0
+      - name: Verify source, package and complete routes
+        run: |
+          npm run check
+          node scripts/v8-package-check.mjs
+          node scripts/v8-journey.mjs
+          npm run build -- --mode yandex --outDir dist-yandex
+      - name: Check actual production browser and advertising contract
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/preview.log 2>&1 &
+          python3 -m http.server 4174 --bind 127.0.0.1 --directory dist-yandex > /tmp/yandex-preview.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
+          export CHROME_PATH="$(command -v google-chrome || command -v chromium)"
+          node scripts/v8-browser.mjs
+          node scripts/v8-yandex-browser.mjs
+      - name: Record exact deployed revision
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          fs.writeFileSync('dist/build-info.json', JSON.stringify({
-            commit: process.env.GITHUB_SHA,
-            version: 'v7',
-            repository: process.env.GITHUB_REPOSITORY,
-            run: process.env.GITHUB_RUN_ID
-          }, null, 2) + '\n');
+          fs.writeFileSync('dist/build-info.json',JSON.stringify({commit:process.env.GITHUB_SHA,version:'v9-five',levels:5,repository:process.env.GITHUB_REPOSITORY,run:process.env.GITHUB_RUN_ID},null,2));
           NODE
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: publication-evidence
+          path: smoke-artifacts/
+          retention-days: 7
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
   deploy:
     if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
-      - name: Deploy to GitHub Pages
+      - uses: actions/deploy-pages@v4
         id: deployment
-        uses: actions/deploy-pages@v4
-      - name: Verify public deployed revision
+      - name: Verify the public page matches this commit
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           python3 - <<'PY'
           import os,json,time,urllib.request
-          url=os.environ['PAGE_URL'].rstrip('/')+'/'
+          base=os.environ['PAGE_URL'].rstrip('/')+'/'
           expected=os.environ['GITHUB_SHA']
           for attempt in range(30):
               try:
-                  req=urllib.request.Request(url+'build-info.json?revision='+expected+'&attempt='+str(attempt),headers={'Cache-Control':'no-cache'})
-                  with urllib.request.urlopen(req,timeout=20) as response:
-                      info=json.load(response)
-                  if info.get('commit')==expected:
-                      with urllib.request.urlopen(url+'?verify='+expected,timeout=20) as response:
-                          html=response.read().decode()
-                      assert 'level-select' in html, 'Missing campaign menu in published HTML'
-                      print('Live revision confirmed:',info['commit'],url)
+                  req=urllib.request.Request(base+'build-info.json?revision='+expected+'&attempt='+str(attempt),headers={'Cache-Control':'no-cache'})
+                  with urllib.request.urlopen(req,timeout=20) as response: info=json.load(response)
+                  if info.get('commit')==expected and info.get('levels')==5:
+                      with urllib.request.urlopen(base+'?verify='+expected,timeout=20) as response: html=response.read().decode()
+                      assert 'settings-level-select' in html
+                      print('LIVE FIVE-LEVEL REVISION VERIFIED:',expected,base)
                       break
-              except Exception as error:
-                  print('Publication check:',type(error).__name__,str(error))
+              except Exception as error: print(type(error).__name__,str(error))
               time.sleep(5)
-          else:
-              raise SystemExit('Public build did not match deployed commit')
+          else: raise SystemExit('Public build did not match verified revision')
           PY

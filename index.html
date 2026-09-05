@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#12272d" />
-    <meta name="description" content="NESI / Transfer Lab — спокойная 3D-головоломка. Три мастерские, порталы, мосты и подъёмник. Доставьте друга до выхода вместе." />
+    <meta name="description" content="NESI / Transfer Lab — спокойная 3D-головоломка. Пять испытаний: порталы, вес, падение, движущаяся панель и инерция. Доставьте друга до выхода вместе." />
     <title>NESI / Transfer Lab — 3D-игра от третьего лица</title>
   </head>
   <body>
@@ -22,9 +22,9 @@
       <div class="hero-panel">
         <span class="brand">NESI <i></i> МАЛЕНЬКОЕ ПУТЕШЕСТВИЕ</span>
         <h1 id="game-title">TRANSFER<br /><span>LAB</span></h1>
-        <div class="hero-meta"><span>Три уровня · v7</span><span>Один друг</span><span>Можно не спешить</span></div>
-        <p class="lead">Пройдите три разные мастерские вдвоём. Вес друга включает механизмы; порталы возвращают его к тебе. Чекпоинтов нет. Падение в зоне восстановления не прерывает прохождение.</p>
-        <label class="setting-row">Уровень <select id="level-select"><option value="0">01 · Мост для двоих</option><option value="1">02 · Тихий атриум</option><option value="2">03 · Верхняя мастерская</option></select></label>
+        <div class="hero-meta"><span>Пять уровней · v8</span><span>Один друг</span><span>Можно не спешить</span></div>
+        <p class="lead">Пять разных испытаний: сначала два портала, затем вес, высота и направление полёта. Светлые плиты принимают портал. Тёмные — нет. Друг должен добраться вместе с тобой.</p>
+        <label class="setting-row">Уровень <select id="level-select"></select></label>
         <button id="play-button" class="primary-button">Отправиться вместе <span aria-hidden="true">↗</span></button>
         <div class="control-grid" aria-label="Управление">
           <span><kbd>WASD</kbd> движение</span><span><kbd>Мышь</kbd> камера</span>
@@ -48,16 +48,22 @@
         <button id="pause-button" class="icon-button" aria-label="Приостановить игру">Ⅱ</button>
       </div>
     </header>
+    <nav class="play-tools" aria-label="Меню игры"><button id="quick-hint" class="icon-button" aria-label="Подсказки">?</button><button id="quick-settings" class="icon-button" aria-label="Пауза и настройки">Ⅱ</button></nav>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <section id="pause-screen" class="screen modal-screen" aria-labelledby="pause-title" aria-hidden="true">
       <div class="modal-card">
         <span class="eyebrow">МОЖНО ПЕРЕДОХНУТЬ</span>
         <h2 id="pause-title">Пауза<span>.</span></h2>
-        <p class="muted">Продолжим с того же места.</p>
+        <p class="muted" id="pause-course">Продолжим с того же места.</p>
+        <label class="setting-row">Уровень <select id="settings-level-select" aria-label="Перейти к уровню"></select></label>
         <button id="resume-button" class="primary-button">Продолжить <span aria-hidden="true">→</span></button>
         <button id="restart-button" class="secondary-button">Начать уровень заново</button>
+        <button id="hint-button" class="secondary-button">Подсказка</button>
+        <section id="hint-detail" hidden aria-live="polite"><div id="hint-text"></div><button id="hint-unlock" class="secondary-button">Открыть подсказку</button><p id="ad-status" class="muted"></p></section>
         <button id="level-menu-button" class="secondary-button">Выбрать другой уровень</button>
         <label class="setting-row"><span>Обучение внизу экрана</span><input id="tutorial-toggle" type="checkbox" checked></label>
+        <label class="setting-row"><span>Выключить звук</span><input id="mute-toggle" type="checkbox"></label>
+        <label class="setting-row">Громкость <input id="volume-control" type="range" min="0" max="100" value="65" aria-label="Громкость"></label>
         <label class="setting-row">Графика <select id="quality-select"><option value="low">Лёгкая</option><option value="balanced" selected>Сбалансированная</option><option value="high">Высокая</option></select></label>
       </div>
     </section>
@@ -65,7 +71,7 @@
       <div class="modal-card win-card">
         <span class="eyebrow">ДРУГ ТОЖЕ ДОБРАЛСЯ</span>
         <h2 id="win-title">Вместе<br />получилось<span>.</span></h2>
-        <p class="muted">Вы прошли всю лабораторию, и брейнрот с тобой у выхода. Ещё одна прогулка?</p>
+        <p class="muted">Испытание пройдено. Друг с тобой.</p>
         <button id="play-again-button" class="primary-button">Погулять ещё <span aria-hidden="true">↻</span></button>
       </div>
     </section>

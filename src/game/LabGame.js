@@ -7,8 +7,8 @@ import { LabPlayerAnimator } from './LabPlayerAnimator.js';
 import { LabHeldDevice } from './LabHeldDevice.js';
 import { LabPortals, portalBacksCollider, transformPortalPoint, pointInsidePortal } from './LabPortals.js';
 import { LabPhysics, sampleRampSurface } from './LabPhysics.js';
-import { buildLabFirstLevel } from './LabFirstLevel.js';
 import { loadLabModels } from './LabAssetLoader.js';
+import { ALL_LAB_ASSETS } from './labAssets.js';
 import { LabCompanionAnimator } from './LabCompanionAnimator.js';
 import { LabCompanionBehavior } from './LabCompanionBehavior.js';
 import { LabCompanionRig } from './LabCompanionRig.js';
@@ -31,9 +31,9 @@ export const CHAMBERS = [
 ];
 
 export class LabGame {
-  constructor({ container, touch, onProgress = () => {}, onReady = () => {}, onHud = () => {}, onToast = () => {}, onPause = () => {}, onWin = () => {} }) {
+  constructor({ container, touch, onProgress = () => {}, onReady = () => {}, onHud = () => {}, onToast = () => {}, onPause = () => {}, onWin = () => {}, onRestartRequest = null }) {
     this.container = container; this.touch = touch;
-    this.callbacks = { onProgress, onReady, onHud, onToast, onPause, onWin };
+    this.callbacks = { onProgress, onReady, onHud, onToast, onPause, onWin, onRestartRequest };
     this.assets = new Map(); this.failures = [];
     this.colliders = []; this.cameraBlockers = []; this.aimBlockers = []; this.portalPanels = [];
     this.floors = []; this.ramps = []; this.sectorProps = [[], [], []]; this.cubes = []; this.doors = [];
@@ -86,13 +86,13 @@ export class LabGame {
     this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.enabled = this.quality.shadows !== false; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.localClippingEnabled = true;
     this.container.appendChild(this.renderer.domElement);
     this.scene.add(new THREE.HemisphereLight(0xe7f5ff, 0x9aa7ac, 2.5));
     this.keyLight = new THREE.DirectionalLight(0xfff0d9, 2.1);
     this.keyLight.position.set(-7, 30, 14); this.keyLight.target.position.set(0, 0, -14.5); this.keyLight.castShadow = true;
-    this.keyLight.shadow.mapSize.set(2048, 2048);
+    this.keyLight.shadow.mapSize.set(this.quality.shadowSize || 1024, this.quality.shadowSize || 1024);
     Object.assign(this.keyLight.shadow.camera, { left: -20, right: 20, top: 48, bottom: -48, near: 1, far: 100 });
     this.keyLight.shadow.bias = -0.00015; this.keyLight.shadow.normalBias = 0.04;
     this.scene.add(this.keyLight, this.keyLight.target);
@@ -109,8 +109,10 @@ export class LabGame {
   }
 
   async loadAssets() {
-    const result = await loadLabModels({ renderer: this.renderer, onProgress: this.callbacks.onProgress });
-    this.assets = result.assets;
+    const missing = ALL_LAB_ASSETS.filter(a => CAMPAIGN[this.levelIndex].assets.includes(a.id) && !this.assets.has(a.id));
+    if (!missing.length) return;
+    const result = await loadLabModels({ renderer: this.renderer, onProgress: this.callbacks.onProgress, models: missing });
+    for (const [id, model] of result.assets) this.assets.set(id, model);
     this.loadingProfile = result.profile;
   }
 
@@ -223,7 +225,7 @@ export class LabGame {
 
   buildLevel() {
     const previousRoots = new Set(this.scene.children);
-    this.firstLevel = this.levelIndex === 0 ? buildLabFirstLevel(this) : buildLabCampaignLevel(this, this.levelIndex);
+    this.firstLevel = buildLabCampaignLevel(this, this.levelIndex);
     this.mechanisms = this.firstLevel;
     this.launchPad = this.firstLevel.launchPad;
     this.playerGroup = new THREE.Group();
@@ -259,7 +261,10 @@ export class LabGame {
   async selectLevel(index, playing = true) {
     if (!Number.isInteger(index) || index < 0 || index >= CAMPAIGN.length) throw new RangeError('Unknown campaign level');
     this.state = 'loading'; this.renderer?.setAnimationLoop(null); this.input?.keys.clear();
-    disposeLabLevel(this); this.levelIndex = index; this.buildLevel();
+    this.audio?.motor?.(false);
+    this.levelIndex = index;
+    if (CAMPAIGN[index].assets.some(id => !this.assets.has(id))) await this.loadAssets();
+    disposeLabLevel(this); this.buildLevel();
     this.portalActors.prepare();
     if (this.renderer?.compileAsync) await this.renderer.compileAsync(this.scene, this.camera);
     this.performanceMonitor.reset(); this.accumulator = 0; this.lastFrame = performance.now();
@@ -337,7 +342,7 @@ export class LabGame {
   }
 
   placePortal(index) {
-    if (this.state !== 'playing') return false;
+    if (this.externalBlocked || this.state !== 'playing') return false;
     if (this.heldCube) { this.callbacks.onToast('Сначала поставь брейнрота [E], чтобы взять пушку'); return false; }
     // Shooting animates only the hand/device. Camera framing belongs to F.
     this.animator?.triggerShot?.(); this.heldDevice?.fire(index);
@@ -359,12 +364,12 @@ export class LabGame {
       }
     }
     if (!this.placeOnPanel(index, hit.object, hit.point)) return false;
-    this.audio.tone(index ? 450 : 680, .13, 'sine', .04);
+    if(this.audio.portal)this.audio.portal(index);else this.audio.tone(index ? 450 : 680, .13, 'sine', .04);
     return true;
   }
 
   clearPortals() {
-    if (this.state !== 'playing') return false;
+    if (this.externalBlocked || this.state !== 'playing') return false;
     this.portals.clear(); this.portalSurfaceIds = [null, null];
     for (const id of this.portalCargoColliders) this.physics.setStaticEnabled(id,
       this.colliders.find(c => c.mesh.uuid === id)?.enabled !== false);
@@ -388,7 +393,7 @@ export class LabGame {
           : 'Здесь проход не помещается. Выбери свободную белую панель');
       return false;
     }
-    this.portalSurfaceIds[index] = panel.uuid;
+    this.portalSurfaceIds[index] = panel.userData.portalColliderId ?? panel.uuid;
     this.callbacks.onToast(this.portals.ready ? 'Пара связана. Войди в любой проход' : 'Первый проход готов. Установи второй');
     return true;
   }
@@ -446,8 +451,11 @@ export class LabGame {
   }
 
   togglePause(force) {
-    if (!['playing', 'paused'].includes(this.state)) return;
-    const paused = force ?? this.state === 'playing'; this.state = paused ? 'paused' : 'playing';
+    if (this.externalBlocked || !['playing', 'paused'].includes(this.state)) return;
+    const paused = force ?? this.state === 'playing';
+    // Repeated blur/pointer-lock notifications must not rebuild an open hint menu.
+    if ((this.state === 'paused') === paused) { if (paused) document.exitPointerLock?.(); return; }
+    this.state = paused ? 'paused' : 'playing';
     this.input.keys.clear(); this.lastFrame = performance.now(); this.accumulator = 0;
     if (paused) document.exitPointerLock?.(); else this.renderer.domElement.requestPointerLock?.()?.catch?.(() => {});
     this.callbacks.onPause(paused);
@@ -457,15 +465,17 @@ export class LabGame {
     const frameMs = Math.max(0, now - this.lastFrame);
     const dt = Math.min(.1, frameMs / 1000); this.lastFrame = now;
     if (this.state === 'playing') this.performanceMonitor.sample(frameMs, now, this.renderer?.info?.render);
-    if (this.input.consumePause()) this.togglePause();
-    if (this.state === 'playing' && this.input.consumeRestart()) this.restart();
-    if (this.state === 'playing') {
+    if (!this.externalBlocked && this.input.consumePause()) this.togglePause();
+    if (!this.externalBlocked && this.state === 'playing' && this.input.consumeRestart()) {
+      if(this.callbacks.onRestartRequest)this.callbacks.onRestartRequest();else this.restart();
+    }
+    if (this.state === 'playing' && !this.externalBlocked) {
       this.accumulator += dt;
       while (this.accumulator + 1e-10 >= FIXED_STEP) {
         this.updatePlaying(FIXED_STEP); this.accumulator = Math.max(0, this.accumulator - FIXED_STEP);
       }
     }
-    this.updateVisuals(this.state === 'paused' ? 0 : dt, this.accumulator / FIXED_STEP);
+    this.updateVisuals(this.state === 'paused' || this.externalBlocked ? 0 : dt, this.accumulator / FIXED_STEP);
     this.render(); this.renderFrames++;
     if (this.fpsElement && now - (this.lastUiUpdate ?? 0) > 180) {
       this.lastUiUpdate = now; const stats = this.performanceMonitor.stats;
@@ -515,8 +525,15 @@ export class LabGame {
     const speed = this.heldCube ? (sprint ? 4.5 : 2.9) : aiming ? 2.55 : sprint ? 5.0 : 3.3;
     const desired = new THREE.Vector3(move.x, 0, move.y).applyAxisAngle(UP, this.yaw).multiplyScalar(speed);
     const acceleration = this.playerGrounded ? (move.lengthSq() ? 10.5 : 15) : 3;
-    this.playerVelocity.x = THREE.MathUtils.damp(this.playerVelocity.x, desired.x, acceleration, dt);
-    this.playerVelocity.z = THREE.MathUtils.damp(this.playerVelocity.z, desired.z, acceleration, dt);
+    if (this.playerGrounded || !this.firstLevel?.momentum) {
+      this.playerVelocity.x = THREE.MathUtils.damp(this.playerVelocity.x, desired.x, acceleration, dt);
+      this.playerVelocity.z = THREE.MathUtils.damp(this.playerVelocity.z, desired.z, acceleration, dt);
+    } else {
+      // Air control is an acceleration, not a velocity reset. A portal fling
+      // retains its energy when no movement key is pressed.
+      const steer = desired.clone().multiplyScalar(1 / Math.max(speed, .001));
+      this.playerVelocity.addScaledVector(steer, dt * 2.8);
+    }
     if (this.launchTime > 0) {
       this.playerVelocity.x = this.launchVector?.x ?? 0;
       this.playerVelocity.z = this.launchVector?.z ?? -10;
@@ -572,6 +589,8 @@ export class LabGame {
       const facing = new THREE.Vector3(Math.sin(this.facing), 0, Math.cos(this.facing)).applyQuaternion(teleport.rotation);
       if (Math.hypot(facing.x, facing.z) > .001) this.facing = Math.atan2(facing.x, facing.z);
       this.portalCooldown = .07; this.teleportCount++;
+      this.lastPortalTravel = { entry: teleport.entryIndex, exit: teleport.exitIndex, speed: teleport.velocity.length() };
+      this.firstLevel?.onTeleport?.(teleport);
       this.previousPlayerPosition.copy(this.playerPosition); this.previousFacing = this.facing;
       previous.copy(this.playerPosition);
       this.animator.groundContact?.reset();
@@ -582,7 +601,7 @@ export class LabGame {
       this.portalVisualOffset.copy(transportedVisual).sub(this.playerPosition);
       const upright = new THREE.Quaternion().setFromAxisAngle(UP, this.facing);
       this.portalVisualRotation.copy(transportedQ).multiply(upright.invert());
-      this.audio.tone(620, .12, 'triangle', .035);
+      if(this.audio.travel)this.audio.travel();else this.audio.tone(620, .12, 'triangle', .035);
     } else this.resolveBody(this.playerPosition, previous, this.playerVelocity, PLAYER_RADIUS, PLAYER_HEIGHT, true);
     this.playerGrounded = Boolean(this.groundedByCollider);
     if (this.playerGrounded && !wasGrounded && downwardImpact > 1) {
@@ -652,6 +671,13 @@ export class LabGame {
   resolveBody(position, previous, velocity, radius, height, allowPortals = false) {
     for (let iteration = 0; iteration < 3; iteration++) for (const collider of this.colliders) {
       if (!collider.enabled) continue;
+      // A tilted plate's world AABB includes empty air in front of its real
+      // surface. Reject that broad-phase false positive before resolution.
+      if (collider.frontPlane) {
+        const f=collider.frontPlane(),centre=position.clone().addScaledVector(UP,height/2);
+        const extent=radius+(height/2-radius)*Math.abs(f.normal.y);
+        if(centre.sub(f.center).dot(f.normal)>extent+.05)continue;
+      }
       const b = collider.box;
       if (position.y + height <= b.min.y + .001 || position.y >= b.max.y - .001) continue;
       const nearestX = THREE.MathUtils.clamp(position.x, b.min.x, b.max.x);
@@ -700,7 +726,7 @@ export class LabGame {
   }
 
   toggleCube() {
-    if (this.state !== 'playing') return false;
+    if (this.externalBlocked || this.state !== 'playing') return false;
     if (this.heldCube) {
       this.physics.release(); this.heldCube = null;
       this.animator.triggerInteraction('place'); this.companionAnimator.trigger('release');
@@ -748,6 +774,13 @@ export class LabGame {
     // A free companion passes through the same apertures. Collision is opened
     // only while this body's centre fits inside the actual portal footprint.
     const nextPortalColliders = new Set();
+    for (const collider of this.colliders) if(collider.enabled && collider.frontPlane) {
+      const f=collider.frontPlane(),localNormal=f.normal.clone().applyQuaternion(this.cargo.quaternion.clone().invert());
+      const extent=CUBE_RADIUS*(Math.abs(localNormal.x)+Math.abs(localNormal.y)+Math.abs(localNormal.z));
+      if(this.cargo.position.clone().sub(f.center).dot(f.normal)>extent+.05) {
+        nextPortalColliders.add(collider.mesh.uuid);this.physics.setStaticEnabled(collider.mesh.uuid,false);
+      }
+    }
     if (this.portals.ready) {
       for (const collider of this.colliders) if (collider.enabled &&
         (this.portalOpensCollider(collider, this.cargo.position, CUBE_RADIUS) ||

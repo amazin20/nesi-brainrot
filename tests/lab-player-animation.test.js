@@ -102,7 +102,7 @@ test('real player: duplicate seam vertices share identical bone weights', () => 
 test('backpack and rear shoulder decorations never inherit arm or wing bones', () => {
   for (const point of [[0, -0.25, -0.52], [-0.21, -0.28, -0.56], [0.2, -0.24, -0.60]]) {
     const { indices, weights } = resolveLabPlayerSkin(...point);
-    assert.equal(indices[0], LAB_PLAYER_BONE.Body);
+    assert.equal(indices[0], LAB_PLAYER_BONE.Chest);
     assert.equal(weights[0], 1);
   }
   assert.ok(LAB_PLAYER_JOINTS.every(({ name }) => !/Cape|Wing|Ear/.test(name)));

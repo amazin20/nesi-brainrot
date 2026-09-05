@@ -4,7 +4,7 @@ import * as THREE from 'three';
  * Side walls overlap the flush frame. No cut-outs inferred from decorative GLB bounds.
  * Door pivots are real hinges; the energy field occupies the identical clear opening. */
 export function createArchitecturalGate(game, { z, width = 4.8, height = 3.65,
-  roomWidth = 18, roomHeight = 6.2, kind = 'door', floorY = 0 } = {}) {
+  roomWidth = 18, roomHeight = 6.2, kind = 'door', floorY = 0, constructWalls = true } = {}) {
   if (![z, width, height, roomWidth, roomHeight, floorY].every(Number.isFinite) || width <= 1.4 || width >= roomWidth)
     throw new RangeError('Invalid architectural gate dimensions');
   const art = new THREE.Group(); art.name = `Integrated ${kind} gateway`; game.scene.add(art);
@@ -18,9 +18,9 @@ export function createArchitecturalGate(game, { z, width = 4.8, height = 3.65,
   };
   // Continuous wall from the outer shell to the actual clear aperture.
   const leftWidth = roomWidth / 2 - half;
-  for (const sign of [-1, 1]) game.box(sign * (half + leftWidth / 2), floorY + roomHeight / 2, z,
+  if (constructWalls) for (const sign of [-1, 1]) game.box(sign * (half + leftWidth / 2), floorY + roomHeight / 2, z,
     leftWidth + .02, roomHeight, depth, neutral, { solid: true });
-  game.box(0, floorY + height + (roomHeight - height) / 2, z, width + .04,
+  if (constructWalls) game.box(0, floorY + height + (roomHeight - height) / 2, z, width + .04,
     roomHeight - height + .02, depth, neutral, { solid: true });
   const frame = [
     make(-half - rim / 2, floorY + height / 2, z, rim + .04, height + .04, depth + .08, trim),
