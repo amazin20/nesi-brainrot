@@ -1,0 +1,85 @@
+name: V8 five-course verification
+on:
+  push:
+    branches: ['feature/physics-campaign-v8']
+    paths: ['.github/workflows/v8-verify.yml']
+permissions:
+  contents: write
+concurrency:
+  group: v8-verify
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply hash-verified gameplay revision to review branch
+        run: |
+          test "$GITHUB_REF_NAME" = 'feature/physics-campaign-v8'
+          python3 - <<'PY'
+          import pathlib,base64,lzma,hashlib
+          encoded=''.join(p.read_text().strip() for p in sorted(pathlib.Path('maintenance').glob('v8-patch-*.b64')))
+          patch=lzma.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(patch).hexdigest()=='42de793dd10971603f2a847e896977d0badd93fe7d1fd7a1fa4185abb5ef2446'
+          pathlib.Path('/tmp/v8.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/v8.patch
+          git apply /tmp/v8.patch
+          rm maintenance/v8-patch-*.b64
+      - name: Install pinned dependencies and browser driver
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false puppeteer-core@24.16.0
+      - name: Unit tests, production build and five real-model journeys
+        run: |
+          npm run check
+          node scripts/v8-journey.mjs
+      - name: Browser-rendered routes, menu, settings and screenshots
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/nesi-preview.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
+          export CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node scripts/v8-browser.mjs
+      - name: Build separate Yandex SDK package
+        run: npm run build:yandex
+      - name: Commit verified source only to review branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git restore --source=HEAD --staged --worktree .github/workflows
+          git add -u
+          git add src/game/LabCampaignV8.js src/game/LabTileWorld.js src/game/LabJourneyV8.js src/game/LabPlatform.js scripts/v8-browser.mjs scripts/v8-journey.mjs docs/RELEASE_V8.md docs/NEXT_MODELS_V8.md tests/lab-v8.test.js qa/v8-journey.json
+          git commit -m 'V8: five progressive tiled portal-physics courses, animated chest and Yandex-ready audio/ads'
+          git push origin HEAD:refs/heads/feature/physics-campaign-v8
+          REVISION="$(git rev-parse HEAD)" node --input-type=module -e "import fs from 'node:fs';for(const d of ['dist','dist-yandex'])fs.writeFileSync(d+'/build-info.json',JSON.stringify({commit:process.env.REVISION,version:'v8'}));"
+      - name: Preserve actual verification and rendered evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8-verification
+          path: |
+            smoke-artifacts/v8-*.png
+            smoke-artifacts/v8-browser.json
+            qa/v8-journey.json
+          retention-days: 7
+      - name: Preserve tested browser build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8-tested-build
+          path: dist/
+          retention-days: 7
+      - name: Preserve Yandex SDK package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v8-yandex-build
+          path: dist-yandex/
+          retention-days: 7
