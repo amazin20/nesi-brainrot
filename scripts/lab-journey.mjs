@@ -49,17 +49,28 @@ for (const kind of ['table', 'chair']) {
   geometryChecks[`${kind}WithCompanion`] = { grounded:game.playerGrounded, peak, top, finish:game.playerPosition.toArray(), sameCompanion:true };
 }
 // Both actors use the real first-level launcher and recovery lift.
-driver.reset(); driver.fixturePlayer(5.4, 0, 17.3);
-game.physics.resetCargo({ position: [5.4, .45, 16.55] }); driver.step(.3); driver.pressE(); driver.step(.8);
+driver.reset();
+const launcherCargo = game.cargo, launcherBody = game.physics.cargoBody;
+driver.goto(-2, 14); driver.pressE(); driver.step(.5);
 assert.equal(game.heldCube, game.cargo);
 assert.equal(game.placePortal(0), false, 'A loaded player must not shoot');
+// Approach the working deck through the gap BETWEEN the source's four blue
+// fins. This is ordinary walking from spawn, without moving or replacing cargo.
+driver.goto(2.8, 12.3); driver.goto(3.4, 13.0);
+game.yaw = Math.atan2(-(5.4 - game.playerPosition.x), -(15.1 - game.playerPosition.z));
 driver.key('KeyW'); let launchPeak = 0, launched = false;
-for (let i = 0; i < 100; i++) {
+for (let i = 0; i < 210; i++) {
   driver.step(1/60); launchPeak = Math.max(launchPeak, game.playerPosition.y);
   if (game.launchTime > 0) { launched = true; driver.key('KeyW', false); }
+  if (launched && launchPeak > 1.6 && game.playerGrounded) break;
 }
 assert.ok(launched && launchPeak > 1.6 && game.heldCube === game.cargo, 'Loaded first-level launcher failed');
-geometryChecks.launchWithCompanion = { peak: launchPeak, sameCompanion: true };
+assert.equal(game.cargo, launcherCargo); assert.equal(game.physics.cargoBody, launcherBody);
+const launcherBounds = new THREE.Box3().setFromObject(game.firstLevel.launchPad.art);
+assert.ok(launcherBounds.min.y >= -.005, 'Launcher body must remain above the floor');
+geometryChecks.launchWithCompanion = { peak: launchPeak, sameCompanion: true, samePhysicsBody: true,
+  approach: 'walking diagonally between the authored fins', groundedAfter: game.playerGrounded,
+  deckHeight: game.firstLevel.launchPad.deckY, modelBottom: launcherBounds.min.y };
 driver.reset(); driver.fixturePlayer(4.35, -2.8, 5.5, Math.PI / 2);
 game.physics.resetCargo({ position: [4.35, -2.35, 4.8] }); driver.step(.25); driver.pressE(); driver.step(.7);
 assert.equal(game.heldCube, game.cargo); driver.goto(6.7, 5.5); driver.step(5.8);

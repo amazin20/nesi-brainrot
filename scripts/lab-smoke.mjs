@@ -43,7 +43,7 @@ try {
     console.log('Native production checks passed: source models, jump, shot camera, hand contact, portal carry, fixed door frame and complete first-level journey with bridge and live weight circuits.');
 
     report.stills = [];
-    for (const [pose, name] of [['idle', 'lab-third-person.png'], ['run', 'run-pose.png'], ['jump', 'jump-pose.png'], ['table', 'table-jump.png'], ['carry', 'carry-pose.png'], ['happy', 'happy-pose.png'], ['portals', 'portal-view.png'], ['door-closed', 'door-closed.png'], ['door-open', 'door-open.png'], ['barrier-closed', 'barrier-closed.png'], ['barrier-open', 'barrier-open.png'], ['bridge-loaded', 'first-level-bridge-loaded.png'], ['receiver-panel', 'first-level-receiver-panel.png'], ['pad-surface', 'first-level-pad-portal.png']]) {
+    for (const [pose, name] of [['idle', 'lab-third-person.png'], ['run', 'run-pose.png'], ['jump', 'jump-pose.png'], ['table', 'table-jump.png'], ['carry', 'carry-pose.png'], ['happy', 'happy-pose.png'], ['portals', 'portal-view.png'], ['door-closed', 'door-closed.png'], ['door-open', 'door-open.png'], ['barrier-closed', 'barrier-closed.png'], ['barrier-open', 'barrier-open.png'], ['bridge-loaded', 'first-level-bridge-loaded.png'], ['receiver-panel', 'first-level-receiver-panel.png'], ['pad-surface', 'first-level-pad-portal.png'], ['launch-pad', 'first-level-launch-pad.png']]) {
       await page.click('#evidence-' + pose);
       await page.waitForFunction(p => document.querySelector('#lab-evidence')?.dataset.pose === p, {}, pose);
       const data = await page.$eval('#evidence-preview', image => image.src.split(',')[1]);

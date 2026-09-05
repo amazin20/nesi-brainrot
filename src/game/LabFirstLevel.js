@@ -333,9 +333,30 @@ export function buildLabFirstLevel(game) {
   solid(new THREE.Box3(V(chairCenter.x - .43, seatY - .1, chairCenter.z - .43), V(chairCenter.x + .43, seatY, chairCenter.z + .43)));
   solid(new THREE.Box3(V(chairCenter.x + .28, seatY, chairCenter.z - .43), V(chairCenter.x + .43, chairBounds.max.y, chairCenter.z + .43)));
   const launchArt = prop(21, 2.65, config.launch, 0), launchBounds = dimensions(launchArt);
-  launchArt.position.y -= launchBounds.max.y - .13;
-  const launchCollider = solid(new THREE.Box3(V(4.22, 0, 13.93), V(6.58, .13, 16.27)));
-  const launchPad = { art: launchArt, position: V(...config.launch), collider: launchCollider, radius: 1.05 };
+  // The source's highest vertices are its blue fins, not the working deck.
+  // Keep its base on the floor and measure the real centre surface instead of
+  // burying the entire circular machine up to the tips of those fins.
+  const launchRay = new THREE.Raycaster(V(config.launch[0], launchBounds.max.y + .2, config.launch[2]), V(0, -1, 0));
+  const launchDeckY = launchRay.intersectObject(launchArt, true)[0]?.point.y ?? .354;
+  const launchX = config.launch[0], launchZ = config.launch[2];
+  const launchBaseColliders = [
+    solid(new THREE.Box3(V(launchX - .93, 0, launchZ - .93), V(launchX + .93, .28, launchZ + .93))),
+    solid(new THREE.Box3(V(launchX - 1.23, 0, launchZ - .48), V(launchX + 1.23, .28, launchZ + .48))),
+    solid(new THREE.Box3(V(launchX - .48, 0, launchZ - 1.23), V(launchX + .48, .28, launchZ + 1.23))),
+  ];
+  const launchCollider = solid(new THREE.Box3(V(launchX - .56, .27, launchZ - .56), V(launchX + .56, launchDeckY, launchZ + .56)));
+  const finColliders = [];
+  for (const sign of [-1, 1]) {
+    finColliders.push(solid(new THREE.Box3(V(launchX + sign * .98 - .16, .27, launchZ - .115),
+      V(launchX + sign * .98 + .16, launchBounds.max.y, launchZ + .115))));
+    finColliders.push(solid(new THREE.Box3(V(launchX - .115, .27, launchZ + sign * .98 - .16),
+      V(launchX + .115, launchBounds.max.y, launchZ + sign * .98 + .16))));
+  }
+  const launchFloor = { minX: launchX - .56, maxX: launchX + .56, minZ: launchZ - .56, maxZ: launchZ + .56,
+    y: launchDeckY, enabled: true, mesh: launchCollider.mesh };
+  game.floors.push(launchFloor);
+  const launchPad = { art: launchArt, position: V(...config.launch), collider: launchCollider,
+    baseColliders: launchBaseColliders, finColliders, floor: launchFloor, deckY: launchDeckY, radius: 1.05 };
 
   function ramp(id, position, depth, highAt, stage) {
     const art = prop(id, depth, position, stage, highAt === 'maxZ' ? Math.PI : 0);

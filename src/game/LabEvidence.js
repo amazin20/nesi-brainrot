@@ -510,6 +510,14 @@ export function mountLabEvidence(game) {
     game.camera.position.copy(pad.position).add(new THREE.Vector3(2.7, 4.1, 4.3));
     game.camera.lookAt(pad.position);
   }, 'Портал открыт прямо в поверхности модели 29. Отдельной белой накладки нет.'));
+  button('Батут на полу', 'evidence-launch-pad', () => firstLevelPose('launch-pad', level => {
+    driver.step(.2);
+    const pad = level.launchPad;
+    const bounds = new THREE.Box3().setFromObject(pad.art);
+    assert(bounds.min.y >= -.005, 'The launch-pad body must remain above the floor');
+    game.camera.position.copy(pad.position).add(new THREE.Vector3(-3.5, 3.1, 3.8));
+    game.camera.lookAt(pad.position.clone().add(new THREE.Vector3(0, .35, 0)));
+  }, 'Корпус батута стоит на полу; опора совпадает с рабочей поверхностью.'));
   button('Проверки', 'evidence-check', async () => {
     stop(); prepareReview(); state.busy = true; panel.dataset.status = 'checking';
     const report = await runChecks(game, driver, say); state.report = report; reportEl.textContent = JSON.stringify(report, null, 2);

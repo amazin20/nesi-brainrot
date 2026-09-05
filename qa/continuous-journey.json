@@ -1,6 +1,6 @@
 {
-  "identity": "67b88534-6ad6-41da-819b-0e4e5a76f8b9",
-  "bodyId": 75,
+  "identity": "ef0d02f5-018f-4eed-a747-5bec1bc09c0c",
+  "bodyId": 82,
   "cargoResets": 0,
   "playerRespawns": 0,
   "completed": true,
@@ -310,8 +310,13 @@
       "sameCompanion": true
     },
     "launchWithCompanion": {
-      "peak": 2.169583330949151,
-      "sameCompanion": true
+      "peak": 2.393507402074864,
+      "sameCompanion": true,
+      "samePhysicsBody": true,
+      "approach": "walking diagonally between the authored fins",
+      "groundedAfter": true,
+      "deckHeight": 0.3539240674824056,
+      "modelBottom": 0
     },
     "recoveryLiftWithCompanion": {
       "height": 0,
@@ -445,7 +450,7 @@
           },
           "aiming": false,
           "cargo": {
-            "identity": "67b88534-6ad6-41da-819b-0e4e5a76f8b9",
+            "identity": "ef0d02f5-018f-4eed-a747-5bec1bc09c0c",
             "count": 1,
             "position": [
               -2,
@@ -711,7 +716,7 @@
             "steps": 2262,
             "cargoCount": 1,
             "cargoSize": 0.78,
-            "staticColliders": 75,
+            "staticColliders": 82,
             "carrying": false,
             "grounded": true,
             "sleeping": false,
@@ -765,8 +770,8 @@
         "pass": true,
         "detail": {
           "teleports": 1,
-          "identity": "67b88534-6ad6-41da-819b-0e4e5a76f8b9",
-          "bodyId": 75,
+          "identity": "ef0d02f5-018f-4eed-a747-5bec1bc09c0c",
+          "bodyId": 82,
           "distance": 1.2835453579040237,
           "carry": {
             "blend": 1,
@@ -818,6 +823,6 @@
       }
     },
     "errors": [],
-    "created": "2026-09-05T02:52:09.964Z"
+    "created": "2026-09-05T03:08:53.179Z"
   }
 }
