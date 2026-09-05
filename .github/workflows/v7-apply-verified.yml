@@ -32,7 +32,9 @@ jobs:
           PY
           git apply --unidiff-zero --check /tmp/v7.patch
           git apply --unidiff-zero /tmp/v7.patch
-          rm maintenance/v7-patch-*.b64 .github/workflows/life-v7.yml .github/workflows/v7-source-tests.yml .github/workflows/v7-apply-verified.yml
+          git apply --check maintenance/v7-polish.patch
+          git apply maintenance/v7-polish.patch
+          rm maintenance/v7-patch-*.b64 maintenance/v7-polish.patch
       - name: Dependencies
         run: |
           npm ci
@@ -52,6 +54,9 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Actions content tokens intentionally do not modify workflow files.
+          # Their reviewed changes and cleanup are committed separately via the GitHub connector.
+          git restore --source=HEAD --staged --worktree .github/workflows
           git add -u
           git add src/game/LabArchitecturalGate.js src/game/LabCampaignLevels.js src/game/LabLevelLifecycle.js src/game/LabPerformance.js src/game/LabTutorial.js scripts/v7-browser.mjs scripts/v7-journey.mjs tests/lab-v7.test.js docs/RELEASE_V7.md qa/v7-campaign.json
           git commit -m 'V7: repair portal reversals, add two complete courses, living motion and clean UI'
