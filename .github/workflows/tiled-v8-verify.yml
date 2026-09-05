@@ -1,0 +1,90 @@
+name: Tiled V8 full verification
+on:
+  push:
+    branches: ['feature/tiled-physics-five-v8']
+    paths: ['.github/workflows/tiled-v8-verify.yml']
+permissions:
+  contents: write
+concurrency:
+  group: tiled-v8-verify
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply exact reviewed source without touching main
+        run: |
+          test "$GITHUB_REF_NAME" = 'feature/tiled-physics-five-v8'
+          python3 - <<'PY'
+          import pathlib,base64,lzma,hashlib
+          encoded=''.join(p.read_text().strip() for p in sorted(pathlib.Path('maintenance').glob('tiled-v8-*.b64')))
+          patch=lzma.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(patch).hexdigest()=='ed6d2cdfec539cf2f41dd1a08264f4ac8d1a868fa70d42fbab7056f946c4288c'
+          pathlib.Path('/tmp/tiled-v8.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/tiled-v8.patch
+          git apply /tmp/tiled-v8.patch
+          rm maintenance/tiled-v8-*.b64
+      - name: Dependencies and browser driver
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false puppeteer-core@24.16.0
+      - name: Unit tests, package and five original-model routes
+        run: |
+          npm run check
+          node scripts/v8-package-check.mjs
+          node scripts/v8-journey.mjs
+          npm run build -- --mode yandex --outDir dist-yandex
+      - name: Actual WebGL, UI, sound and Yandex callback contract
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/nesi-preview.log 2>&1 &
+          python3 -m http.server 4174 --bind 127.0.0.1 --directory dist-yandex >/tmp/nesi-yandex.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
+          export CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)"
+          node scripts/v8-browser.mjs
+          node scripts/v8-yandex-browser.mjs
+      - name: Encode actual production walking frames
+        run: |
+          if ! command -v ffmpeg >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg; fi
+          ffmpeg -y -framerate 30 -i smoke-artifacts/walk-frames/%03d.png -c:v libx264 -pix_fmt yuv420p -movflags +faststart smoke-artifacts/v8-walking.mp4
+      - name: Commit verified gameplay to this review branch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u
+          git add src/game/LabPlatform.js src/game/LabPreferences.js src/game/LabTileWorld.js src/game/LabV8Journey.js scripts/v8-*.mjs docs/CAMPAIGN_DESIGN_V8.md docs/RELEASE_V8.md tests/lab-v8-*.test.js qa/v8-journeys.json
+          git commit -m 'V8: five progressive tiled physics courses, continuous locomotion, original audio and SDK ads'
+          git push origin HEAD:refs/heads/feature/tiled-physics-five-v8
+          REVISION="$(git rev-parse HEAD)" node --input-type=module -e "import fs from 'node:fs';for(const d of ['dist','dist-yandex'])fs.writeFileSync(d+'/build-info.json',JSON.stringify({commit:process.env.REVISION,version:'v8-tiled'}));"
+      - name: Preserve patched source for reproducible review
+        if: always()
+        run: tar -czf /tmp/tiled-v8-source.tgz src scripts tests docs index.html package.json package-lock.json vite.config.js PROJECT_STATUS.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tiled-v8-evidence
+          path: |
+            smoke-artifacts/
+            qa/v8-journeys.json
+            /tmp/tiled-v8-source.tgz
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: tiled-v8-browser-build
+          path: dist/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: tiled-v8-yandex-build
+          path: dist-yandex/
+          retention-days: 7
