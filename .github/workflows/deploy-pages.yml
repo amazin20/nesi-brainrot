@@ -1,4 +1,4 @@
-name: Deploy verified five-level game
+name: Deploy verified portal game
 on:
   push:
     branches: [main]
@@ -24,11 +24,12 @@ jobs:
         run: |
           npm ci
           npm install --no-save --package-lock=false puppeteer-core@24.16.0
-      - name: Verify source, package and complete routes
+      - name: Verify source, complete routes and jump shortcuts
         run: |
           npm run check
           node scripts/v8-package-check.mjs
           node scripts/v8-journey.mjs
+          node scripts/v10-shortcuts.mjs
           npm run build -- --mode yandex --outDir dist-yandex
       - name: Check actual production browser and advertising contract
         run: |
@@ -42,13 +43,17 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          fs.writeFileSync('dist/build-info.json',JSON.stringify({commit:process.env.GITHUB_SHA,version:'v9-five',levels:5,repository:process.env.GITHUB_REPOSITORY,run:process.env.GITHUB_RUN_ID},null,2));
+          import {CAMPAIGN} from './src/game/LabCampaignLevels.js';
+          fs.writeFileSync('dist/build-info.json',JSON.stringify({commit:process.env.GITHUB_SHA,version:'v10-repair',levels:CAMPAIGN.length,repository:process.env.GITHUB_REPOSITORY,run:process.env.GITHUB_RUN_ID},null,2));
           NODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: publication-evidence
-          path: smoke-artifacts/
+          path: |
+            smoke-artifacts/
+            qa/v8-journeys.json
+            qa/v10-shortcut-audit.json
           retention-days: 7
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
@@ -76,10 +81,11 @@ jobs:
               try:
                   req=urllib.request.Request(base+'build-info.json?revision='+expected+'&attempt='+str(attempt),headers={'Cache-Control':'no-cache'})
                   with urllib.request.urlopen(req,timeout=20) as response: info=json.load(response)
-                  if info.get('commit')==expected and info.get('levels')==5:
+                  if info.get('commit')==expected and info.get('levels')==5 and info.get('version')=='v10-repair':
                       with urllib.request.urlopen(base+'?verify='+expected,timeout=20) as response: html=response.read().decode()
-                      assert 'settings-level-select' in html
-                      print('LIVE FIVE-LEVEL REVISION VERIFIED:',expected,base)
+                      assert 'settings-level-select' in html and 'id="level-number"' in html
+                      assert 'id="quick-hint"' not in html
+                      print('LIVE V10 REPAIR VERIFIED:',expected,base)
                       break
               except Exception as error: print(type(error).__name__,str(error))
               time.sleep(5)

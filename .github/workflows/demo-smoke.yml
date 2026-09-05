@@ -1,7 +1,7 @@
-name: Playable five-level verification
+name: Playable campaign verification
 on:
   push:
-    branches: [main, feature/tiled-physics-five-v8]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -25,6 +25,7 @@ jobs:
           npm run check
           node scripts/v8-package-check.mjs
           node scripts/v8-journey.mjs
+          node scripts/v10-shortcuts.mjs
           npm run build -- --mode yandex --outDir dist-yandex
       - name: Production browser tests
         run: |
@@ -38,20 +39,21 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: five-level-verification
+          name: campaign-verification
           path: |
             smoke-artifacts/
             qa/v8-journeys.json
+            qa/v10-shortcut-audit.json
           retention-days: 7
       - name: Keep verified browser package
         uses: actions/upload-artifact@v4
         with:
-          name: five-level-browser
+          name: campaign-browser
           path: dist/
           retention-days: 7
       - name: Keep Yandex draft package
         uses: actions/upload-artifact@v4
         with:
-          name: five-level-yandex-draft
+          name: campaign-yandex-draft
           path: dist-yandex/
           retention-days: 7
