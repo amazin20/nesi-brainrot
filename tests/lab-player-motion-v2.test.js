@@ -230,7 +230,7 @@ test('pickup/place reach, recover and blend to two-handed cargo with a carrier a
   assert.ok(states.includes('pickup') && states.includes('place'));
   assert.equal(animator.diagnostics.interaction, null);
   assert.equal(animator.state, 'idle');
-  assert.equal(animator.rig.skeleton.bones.length, 14);
+  assert.equal(animator.rig.skeleton.bones.length, 15);
   assert.deepEqual(animator.rig.mesh.geometry.getAttribute('skinWeight').array, skinWeights);
   assert.deepEqual(animator.rig.mesh.geometry.getAttribute('skinIndex').array, skinIndices);
   assert.deepEqual(geometry.getAttribute('position').array, sourcePositions);

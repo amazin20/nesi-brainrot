@@ -1,16 +1,7 @@
-# V8 delivery status
+# Historical V8 delivery status — superseded
 
-The source in this branch contains five rebuilt tiled courses, not a patch installer. Temporary encoded transport files and their workflow have been removed.
+The original V8 branch was not published and contained an incomplete browser advertising check. That delivery is superseded by the five-level publication work described in ../PROJECT_STATUS.md and RELEASE_V9.md.
 
-## Verified
-- Current local revision: 233 unit tests pass; all five complete input-driven physical journeys pass, zero respawns and cargo resets.
-- Earlier revision, GitHub Actions run 33950953326: 231 tests and all five full Chromium/WebGL journeys passed; lazy loading, graphics, sound, persistence and menu checks passed.
-- The same run exposed a rewarded-hint UI failure in the SDK contract stub. It did not pass the complete job. Subsequent code fixes add idempotent forced pause and independent ad request locks, with two new passing unit tests.
+On 2026-09-05, complete run 33955939128 at 6fbd52ecd88ed053739ac75b8f7bd8cb7d2a86e8 passed the five real-model routes, Chromium gameplay and settings checks, and the Yandex SDK callback stub. The earlier hint-button failure was a test interaction during the pause-panel transition; waiting for the interactive panel and using an actual stable locator click preserves the real UI test.
 
-## Not verified / not published
-- Final browser re-run of those follow-up changes has NOT completed.
-- The SDK contract test is a stub, never a real advertisement or revenue check.
-- Updating the verification/deployment workflows was blocked by the connector. Do not bypass that restriction. Legacy V7 workflows still reference the old campaign and must not be treated as V8 validation.
-- Main and GitHub Pages have NOT been updated by this delivery. Do not merge this branch or describe the public V7 URL as a V8 demo without final verification and an authorised deployment workflow.
-
-The downloadable local browser package and Yandex-mode package are release candidates. Actual pre-follow-up rendered frames are clearly labelled as such. No screenshots from concept generation are used as test evidence.
+Current publication must be verified from the actual Pages workflow/public revision, not inferred from this historical document. Real Yandex advertisement delivery and moderation approval remain unverified. The seven newest uploaded GLBs remain outside the runtime inventory pending binary transfer and functional integration.
