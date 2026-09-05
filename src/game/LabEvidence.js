@@ -515,7 +515,7 @@ export function mountLabEvidence(game) {
     const pad = level.launchPad;
     const bounds = new THREE.Box3().setFromObject(pad.art);
     assert(bounds.min.y >= -.005, 'The launch-pad body must remain above the floor');
-    game.camera.position.copy(pad.position).add(new THREE.Vector3(-3.5, 3.1, 3.8));
+    game.camera.position.copy(pad.position).add(new THREE.Vector3(-3.5, 3.1, 1.8));
     game.camera.lookAt(pad.position.clone().add(new THREE.Vector3(0, .35, 0)));
   }, 'Корпус батута стоит на полу; опора совпадает с рабочей поверхностью.'));
   button('Проверки', 'evidence-check', async () => {
