@@ -164,3 +164,19 @@ body[data-play-state='playing'] .lab-reticle, body[data-play-state='playing'] .l
   *, *::before, *::after { transition-duration: 0s !important; }
 }
 .objective-text { max-width: 390px; margin: 8px 0; font-size: 13px; line-height: 1.45; color: #e3eeee; }
+
+/* v7: the world, not a wall of instructions. Menus remain readable. */
+#hud, #toast, .lab-controls, .lab-prompt, .lab-surface-hint { display: none !important; }
+.lab-fps { position: fixed; right: 18px; bottom: 15px; z-index: 18; padding: 6px 9px;
+  color: #e6f1ed; background: #183034a6; border-radius: 6px; font: 12px/1.2 ui-monospace,monospace; pointer-events:auto; }
+.lab-tutorial { position: fixed; left: 24px; bottom: 23px; z-index: 18; max-width: min(520px, calc(100vw - 195px));
+  display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:10px;
+  color:#eaf2ee; background:#193337db; font:14px/1.45 system-ui,sans-serif; pointer-events:none; }
+.lab-tutorial[hidden] { display:none; }
+.lab-tutorial kbd { flex:none; background:#ffffff18; border:1px solid #ffffff28; padding:4px 8px; border-radius:5px; }
+body:not([data-play-state="playing"]) .lab-tutorial,
+body:not([data-play-state="playing"]) .lab-fps { display:none; }
+.setting-row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:14px 0; font-size:14px; }
+.setting-row select { max-width:70%; border:1px solid #8eaba380; background:#e0e8e0; color:#1b353b; border-radius:7px; padding:9px; }
+.setting-row input { width:18px; height:18px; }
+@media (hover:none), (pointer:coarse) { .lab-tutorial { bottom:150px; left:14px; max-width:calc(100vw - 28px); font-size:12px; } .lab-fps { bottom:auto; top:12px; right:12px; } }

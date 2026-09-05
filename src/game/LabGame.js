@@ -12,6 +12,10 @@ import { loadLabModels } from './LabAssetLoader.js';
 import { LabCompanionAnimator } from './LabCompanionAnimator.js';
 import { LabCompanionBehavior } from './LabCompanionBehavior.js';
 import { LabCompanionRig } from './LabCompanionRig.js';
+import { LabPerformance } from './LabPerformance.js';
+import { LabTutorial } from './LabTutorial.js';
+import { buildLabCampaignLevel, CAMPAIGN } from './LabCampaignLevels.js';
+import { disposeLabLevel } from './LabLevelLifecycle.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const PLAYER_HEIGHT = 2.4;
@@ -37,6 +41,7 @@ export class LabGame {
     this.portalCargoColliders = new Set();
     this.portalVisualOffset = new THREE.Vector3();
     this.portalVisualRotation = new THREE.Quaternion();
+    this.levelIndex = 0; this.quality = { pixelRatio: 1.5, portalResolution: 960 }; this.performanceMonitor = new LabPerformance(); this.tutorial = new LabTutorial(this);
     this.state = 'loading'; this.elapsed = 0; this.stage = 0; this.thirdPerson = true;
     this.playerPosition = new THREE.Vector3(); this.playerVelocity = new THREE.Vector3();
     this.previousPlayerPosition = new THREE.Vector3(); this.previousFacing = Math.PI;
@@ -77,7 +82,7 @@ export class LabGame {
     this.scene.fog = new THREE.Fog(0xb3ced6, 64, 120);
     this.camera = new THREE.PerspectiveCamera(57, innerWidth / innerHeight, 0.1, 130);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.quality.pixelRatio));
     this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
@@ -147,15 +152,8 @@ export class LabGame {
   }
 
   label(text, x, y, z, size = 5, color = '#bdefff', rotateY = 0) {
-    const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 256;
-    const context = canvas.getContext('2d');
-    context.fillStyle = color; context.font = '600 92px sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle';
-    const labelWidth = context.measureText(text).width;
-    if (labelWidth > 960) context.font = `600 ${Math.floor(92 * 960 / labelWidth)}px sans-serif`;
-    context.fillText(text, 512, 128);
-    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size / 4), new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.FrontSide }));
-    mesh.position.set(x, y, z); mesh.rotation.y = rotateY; this.scene.add(mesh); return mesh;
+    // Signage is communicated by geometry, indicator lights and optional bottom lessons.
+    return new THREE.Group();
   }
 
   addProp(id, size, position, stage = 0, rotation = 0, options = {}) {
@@ -183,7 +181,13 @@ export class LabGame {
     const oldSize = collider.box.getSize(new THREE.Vector3()), size = bounds.getSize(new THREE.Vector3());
     collider.mesh.position.copy(bounds.getCenter(new THREE.Vector3()));
     if (oldSize.distanceToSquared(size) > 1e-10) {
-      collider.mesh.geometry.dispose(); collider.mesh.geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+      // A moving AABB is a proxy, not a changing mesh topology. Reuse its GPU
+      // geometry instead of allocating/discarding BoxGeometry at 120 Hz.
+      if (!collider.geometrySize) {
+        collider.mesh.geometry.computeBoundingBox();
+        collider.geometrySize = collider.mesh.geometry.boundingBox.getSize(new THREE.Vector3());
+      }
+      collider.mesh.scale.set(size.x / collider.geometrySize.x, size.y / collider.geometrySize.y, size.z / collider.geometrySize.z);
     }
     collider.mesh.updateWorldMatrix(true, false); collider.box.copy(bounds);
     this.physics?.updateStaticBox(collider.mesh.uuid, bounds, dt, collider.enabled);
@@ -218,7 +222,8 @@ export class LabGame {
 
 
   buildLevel() {
-    this.firstLevel = buildLabFirstLevel(this);
+    const previousRoots = new Set(this.scene.children);
+    this.firstLevel = this.levelIndex === 0 ? buildLabFirstLevel(this) : buildLabCampaignLevel(this, this.levelIndex);
     this.mechanisms = this.firstLevel;
     this.launchPad = this.firstLevel.launchPad;
     this.playerGroup = new THREE.Group();
@@ -230,7 +235,7 @@ export class LabGame {
     this.heldDevice = new LabHeldDevice({ model: this.weapon, bones: this.animator.bones, playerRoot: this.playerGroup });
     this.cameraRig = new LabCamera({ camera: this.camera, blockers: this.cameraBlockers,
       isBlocker: (object, hit) => this.isCameraBlocker(object, hit) });
-    this.portals = new LabPortals({ scene: this.scene, renderer: this.renderer, camera: this.camera });
+    this.portals = new LabPortals({ scene: this.scene, renderer: this.renderer, camera: this.camera, maxResolution: this.quality.portalResolution, samples: 2 });
     const group = new THREE.Group(); group.name = 'Persistent brainrot companion';
     const visual = new THREE.Group(); const brainrot = this.model(2, .82);
     brainrot.name = 'Companion source mesh — no visible collider';
@@ -248,9 +253,22 @@ export class LabGame {
     this.portalActors.register(this.playerGroup, { radius: 1.5, centerOffset: [0, 1.2, 0] });
     this.portalActors.register(this.cargo.group, { radius: .75, centerOffset: [0, 0, 0] });
     this.createOverlay(); this.resetRun(false);
+    this.levelRoots = this.scene.children.filter(root => !previousRoots.has(root));
+  }
+
+  async selectLevel(index, playing = true) {
+    if (!Number.isInteger(index) || index < 0 || index >= CAMPAIGN.length) throw new RangeError('Unknown campaign level');
+    this.state = 'loading'; this.renderer?.setAnimationLoop(null); this.input?.keys.clear();
+    disposeLabLevel(this); this.levelIndex = index; this.buildLevel();
+    this.portalActors.prepare();
+    if (this.renderer?.compileAsync) await this.renderer.compileAsync(this.scene, this.camera);
+    this.performanceMonitor.reset(); this.accumulator = 0; this.lastFrame = performance.now();
+    this.state = playing ? 'playing' : 'ready'; this.emitHud();
+    this.renderer?.setAnimationLoop(this.animate);
   }
 
   createOverlay() {
+    if (this.reticle) return;
     this.reticle = document.createElement('div'); this.reticle.className = 'lab-reticle';
     this.reticle.innerHTML = '<i></i><i></i>'; document.body.appendChild(this.reticle);
     this.help = document.createElement('div'); this.help.className = 'lab-controls';
@@ -259,11 +277,13 @@ export class LabGame {
     this.prompt = document.createElement('div'); this.prompt.className = 'lab-prompt'; document.body.appendChild(this.prompt);
     this.surfaceHint = document.createElement('div'); this.surfaceHint.className = 'lab-surface-hint'; document.body.appendChild(this.surfaceHint);
     const mobile = document.createElement('div'); mobile.className = 'lab-mobile';
-    for (const [label, action] of [['①', () => this.placePortal(0)], ['②', () => this.placePortal(1)], ['◎', () => { this.aimHeld = !this.aimHeld; }], ['E', () => this.interact()], ['X', () => this.clearPortals()]]) {
+    for (const [label, action] of [['①', () => this.placePortal(0)], ['②', () => this.placePortal(1)], ['◎', () => { this.aimHeld = !this.aimHeld; }], ['E', () => this.interact()], ['X', () => this.clearPortals()], ['Ⅱ', () => this.togglePause(true)]]) {
       const button = document.createElement('button'); button.textContent = label;
       button.addEventListener('pointerdown', e => { e.preventDefault(); action(); }); mobile.appendChild(button);
     }
     document.body.appendChild(mobile);
+    this.fpsElement = document.createElement('output'); this.fpsElement.className = 'lab-fps'; this.fpsElement.setAttribute('aria-label', 'Частота кадров'); document.body.appendChild(this.fpsElement);
+    this.tutorialElement = document.createElement('div'); this.tutorialElement.className = 'lab-tutorial'; this.tutorialElement.innerHTML = '<kbd></kbd><span></span>'; document.body.appendChild(this.tutorialElement);
   }
 
   setupControls() {
@@ -389,7 +409,7 @@ export class LabGame {
     this.state = playing ? 'playing' : 'ready'; this.stage = 0; this.elapsed = 0; this.teleportCount = 0;
     this.heldCube = null; this.portalCooldown = 0; this.portals.clear(); this.portalSurfaceIds = [null, null];
     this.launchTime = 0; this.aimHeld = false; this.aimingTime = 0; this.completedStages = 0;
-    this.jumpBuffer = this.coyoteTime = 0; this.jumpWindup = 0; this.carryMotionPhase = 0; this.interactQueued = false;
+    this.socialClock = 0; this.jumpBuffer = this.coyoteTime = 0; this.jumpWindup = 0; this.carryMotionPhase = 0; this.interactQueued = false;
     const cargoStart = this.firstLevel?.cargoSpawn?.toArray?.() ?? this.firstLevel?.cargoSpawn ?? CARGO_START;
     this.physics.resetCargo({ position: new THREE.Vector3(...cargoStart) });
     this.cargo.position.fromArray(cargoStart); this.cargo.group.position.copy(this.cargo.position);
@@ -409,10 +429,11 @@ export class LabGame {
   }
 
   respawn(announce = true) {
-    // Only the player returns after an out-of-bounds failure. The same companion
-    // stays in its physical location; the level has catch basins and retrieval stairs.
+    // There are no checkpoints. An actual out-of-bounds failure restarts this
+    // level with the same companion instance and all mechanisms reset together.
+    if (announce && this.firstLevel) { this.resetRun(true); return; }
     if (this.heldCube) { this.physics.release(); this.heldCube = null; }
-    const checkpoint = this.firstLevel?.getCheckpoint?.() ?? this.firstLevel?.spawn ?? CHAMBERS[this.stage].start;
+    const checkpoint = this.firstLevel?.spawn ?? CHAMBERS[this.stage].start;
     this.playerPosition.fromArray(checkpoint.toArray?.() ?? checkpoint); this.playerVelocity.set(0, 0, 0);
     this.previousPlayerPosition.copy(this.playerPosition);
     this.playerGrounded = true; this.yaw = 0; this.pitch = -.15; this.facing = this.previousFacing = Math.PI; this.launchTime = 0;
@@ -421,7 +442,7 @@ export class LabGame {
     this.aimingTime = 0; this.aimHeld = false; this.motion = null;
     this.animator.reset(); this.heldDevice.reset(); this.cameraRig.reset(this.playerPosition, this.yaw, this.pitch);
     this.input?.keys.clear(); this.accumulator = 0;
-    if (announce) this.callbacks.onToast('Игрок вернулся. Брейнрот ждёт там, где остался.');
+
   }
 
   togglePause(force) {
@@ -433,7 +454,9 @@ export class LabGame {
   }
 
   animate(now) {
-    const dt = Math.min(.1, Math.max(0, (now - this.lastFrame) / 1000)); this.lastFrame = now;
+    const frameMs = Math.max(0, now - this.lastFrame);
+    const dt = Math.min(.1, frameMs / 1000); this.lastFrame = now;
+    if (this.state === 'playing') this.performanceMonitor.sample(frameMs, now, this.renderer?.info?.render);
     if (this.input.consumePause()) this.togglePause();
     if (this.state === 'playing' && this.input.consumeRestart()) this.restart();
     if (this.state === 'playing') {
@@ -444,6 +467,14 @@ export class LabGame {
     }
     this.updateVisuals(this.state === 'paused' ? 0 : dt, this.accumulator / FIXED_STEP);
     this.render(); this.renderFrames++;
+    if (this.fpsElement && now - (this.lastUiUpdate ?? 0) > 180) {
+      this.lastUiUpdate = now; const stats = this.performanceMonitor.stats;
+      this.fpsElement.textContent = stats.fps ? `${Math.round(stats.fps)} FPS · ${stats.frameMs.toFixed(1)} мс` : 'FPS …';
+      this.fpsElement.title = `1% low: ${stats.low1Fps.toFixed(0)} FPS; p99: ${stats.p99Ms.toFixed(1)} ms; ${stats.calls} draws; ${stats.triangles} triangles`;
+      const lesson = this.tutorial.update();
+      this.tutorialElement.hidden = !lesson;
+      if (lesson) { this.tutorialElement.querySelector('kbd').textContent = lesson.key; this.tutorialElement.querySelector('span').textContent = lesson.text; }
+    }
   }
 
   updatePlaying(dt) {
@@ -507,7 +538,7 @@ export class LabGame {
     this.playerPosition.addScaledVector(this.playerVelocity, dt);
     const center = this.playerPosition.clone().addScaledVector(UP, CENTER_HEIGHT);
     const previousCenter = previous.clone().addScaledVector(UP, CENTER_HEIGHT);
-    const teleport = this.portalCooldown <= 0 ? this.portals.tryTeleport(center, previousCenter, this.playerVelocity, PLAYER_RADIUS) : null;
+    const teleport = this.portals.tryTeleport(center, previousCenter, this.playerVelocity, PLAYER_RADIUS);
     this.groundedByCollider = false;
     const downwardImpact = Math.max(0, -this.playerVelocity.y);
     if (teleport) {
@@ -533,6 +564,9 @@ export class LabGame {
       }
       this.playerPosition.copy(teleport.position).addScaledVector(UP, -CENTER_HEIGHT);
       this.playerVelocity.copy(teleport.velocity);
+      // A launcher impulse belongs to the traveller frame too. Keeping the old
+      // world-space impulse forced the next tick backwards into the exit wall.
+      if (this.launchTime > 0 && this.launchVector) this.launchVector.applyQuaternion(teleport.rotation);
       const view = new THREE.Vector3(0, 0, -1).applyAxisAngle(UP, oldYaw).applyQuaternion(teleport.rotation);
       if (Math.hypot(view.x, view.z) > .001) this.yaw = Math.atan2(-view.x, -view.z);
       const facing = new THREE.Vector3(Math.sin(this.facing), 0, Math.cos(this.facing)).applyQuaternion(teleport.rotation);
@@ -741,7 +775,7 @@ export class LabGame {
     this.physics.setPlayerProxy({ position: this.playerPosition, radius: PLAYER_RADIUS, height: PLAYER_HEIGHT, velocity: this.playerVelocity }, dt);
     this.physics.step(dt);
     let sample = this.physics.sample(1);
-    if (!this.heldCube && this.cargoPortalCooldown <= 0) {
+    if (!this.heldCube) {
       const travel = this.portals.tryTeleport(new THREE.Vector3().copy(sample.position), beforeStep,
         new THREE.Vector3().copy(sample.velocity), CUBE_RADIUS);
       if (travel) {
@@ -757,6 +791,7 @@ export class LabGame {
       }
     }
     this.cargo.position.copy(sample.position); this.cargo.velocity.copy(sample.velocity); this.cargo.quaternion.copy(sample.quaternion);
+    if (this.firstLevel && this.cargo.position.y < -12) this.resetRun(true);
   }
 
   companionCanStep(position, nx, nz) {
@@ -891,6 +926,11 @@ export class LabGame {
       }
       if (contacts) this.lastFootContacts = { ...contacts };
     }
+    this.socialClock = (this.socialClock ?? 0) + visualDt;
+    if (this.socialClock > 7.5 && (this.motion?.speed ?? 0) < .15 && this.playerGrounded && !this.isAiming()
+      && this.playerPosition.distanceTo(this.cargo.position) < 3.2) {
+      this.socialClock = 0; this.animator.trigger?.('curious'); this.companionAnimator.trigger('nod');
+    }
     this.heldDevice.update({ dt: visualDt, carrying: Boolean(this.heldCube) }); this.animationFrames++;
     if (this.firstLevel) this.firstLevel.renderUpdate?.(blend, this.visualTime);
     else {
@@ -913,12 +953,13 @@ export class LabGame {
   }
 
   render() {
+    if (this.renderer.info) { this.renderer.info.autoReset = false; this.renderer.info.reset(); }
     this.portalActors?.update();
     this.portals.render(this.visualTime); this.renderer.render(this.scene, this.camera);
   }
 
   emitHud() {
-    this.callbacks.onHud({ chamber: this.firstLevel ? '01 / ВМЕСТЕ ЧЕРЕЗ МОСТ' : CHAMBERS[this.stage].name, objective: this.firstLevel?.getObjective() ?? CHAMBERS[this.stage].objective,
+    this.callbacks.onHud({ chamber: this.firstLevel ? this.firstLevel.title : CHAMBERS[this.stage].name, objective: this.firstLevel?.getObjective() ?? CHAMBERS[this.stage].objective,
       hasCargo: Boolean(this.heldCube), portalsReady: Boolean(this.portals?.ready), stage: this.stage,
       friendStatus: this.heldCube ? 'Друг на руках' : this.companionBehavior?.state === 'getting_up' ? 'Друг поднимается'
         : this.companionBehavior?.state === 'waiting_on_pad' ? 'Друг держит плиту'
@@ -926,7 +967,7 @@ export class LabGame {
   }
 
   diagnostics() {
-    return { state: this.state, modelsLoaded: this.assets.size, missingModels: this.failures, thirdPerson: true, stage: this.stage,
+    return { levelIndex: this.levelIndex, checkpoints: false, performance: this.performanceMonitor.stats, state: this.state, modelsLoaded: this.assets.size, missingModels: this.failures, thirdPerson: true, stage: this.stage,
       portalsReady: this.portals.ready, teleportCount: this.teleportCount, cameraDistance: this.camera.position.distanceTo(this.playerPosition),
       animation: this.animator.diagnostics, device: this.heldDevice.diagnostics, aiming: this.isAiming(),
       cargo: { identity: this.cargo.group.uuid, count: this.cubes.length, position: this.cargo.position.toArray(), held: Boolean(this.heldCube), visible: this.cargo.group.visible, physics: this.physics.sample(1), animation: this.companionAnimator.diagnostics,

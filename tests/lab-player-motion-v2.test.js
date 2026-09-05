@@ -42,7 +42,7 @@ function assertFinitePose(animator) {
   }
 }
 
-test('default device hold is right-handed while the free left arm keeps a sustained walking swing', () => {
+test('device remains supported while both arms have distinct, bounded locomotion motion', () => {
   const { animator } = makeAnimator();
   const restRight = localHand(animator, 'R');
   advance(animator, 90);
@@ -57,7 +57,8 @@ test('default device hold is right-handed while the free left arm keeps a sustai
   }
   const range = (values) => Math.max(...values) - Math.min(...values);
   assert.ok(range(samples.L) > 0.22, 'free arm did not keep swinging');
-  assert.ok(range(samples.L) > range(samples.R) * 5, 'device hand swung like a free hand');
+  assert.ok(range(samples.R) > .06 && range(samples.R) < .30, 'device hand must have restrained secondary motion');
+  assert.ok(range(samples.L) > range(samples.R) * 2, 'device hand swung like a free hand');
   assertFinitePose(animator);
 });
 
