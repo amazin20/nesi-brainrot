@@ -6,3 +6,6 @@ review-preview/draco/
 review-preview/models/
 .DS_Store
 *.log
+__pycache__/
+*.pyc
+smoke-artifacts/

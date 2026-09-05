@@ -1,271 +1,823 @@
 {
-  "identity": "9750f021-d52e-4029-8d77-1bef67a2a0f2",
-  "bodyId": 122,
+  "identity": "67b88534-6ad6-41da-819b-0e4e5a76f8b9",
+  "bodyId": 75,
   "cargoResets": 0,
+  "playerRespawns": 0,
   "completed": true,
+  "level": "first-level-weight-and-return",
   "state": "won",
   "milestones": [
     {
-      "name": "both crossed the first gap",
+      "name": "companion lowers counterweight bridge",
       "player": [
-        10.86426958123349,
-        0,
-        1.262874480409431
+        -4.649370579107653,
+        0.17181294878085163,
+        7.904585500769834
       ],
       "cargo": [
-        10.143819466285834,
-        1.0599667156615147,
-        1.2630521392735015
-      ],
-      "held": true,
-      "stage": 0,
-      "doors": [
-        false,
-        false,
-        false
-      ],
-      "barrier": false
-    },
-    {
-      "name": "companion retrieved through pressure plate",
-      "player": [
-        0.000845739693410959,
-        0,
-        -5.08284211884805
-      ],
-      "cargo": [
-        -9.571555833671324,
-        0.3898201198484271,
-        -6.839142217574323
+        -4.639335632540076,
+        0.561813217674136,
+        7.184657734513963
       ],
       "held": false,
-      "stage": 1,
-      "doors": [
-        false,
-        false,
-        false
-      ],
-      "barrier": false
+      "mechanisms": {
+        "name": "01 / ВМЕСТЕ ЧЕРЕЗ МОСТ",
+        "bridgeCrossed": false,
+        "bridgeLoaded": true,
+        "bridgeProgress": 1,
+        "receiverDeployed": false,
+        "exitLoaded": false,
+        "doorOpen": false,
+        "barrierOpen": false,
+        "nativeModels": [
+          13,
+          14,
+          17,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30
+        ]
+      }
     },
     {
-      "name": "first door released its weight circuit",
+      "name": "player crosses the loaded bridge",
       "player": [
-        -10.815811849600308,
-        0,
-        -6.85458109560402
+        0.000017839308370718493,
+        1.1102230246251565e-16,
+        -2.6033861676829657
       ],
       "cargo": [
-        -11.526342526634558,
-        1.0599987294458444,
-        -6.970962116287957
-      ],
-      "held": true,
-      "stage": 1,
-      "doors": [
-        false,
-        false,
-        false
-      ],
-      "barrier": false
-    },
-    {
-      "name": "companion retrieved through pressure plate",
-      "player": [
-        -0.0016595608655885134,
-        0,
-        -16.191283514817012
-      ],
-      "cargo": [
-        9.571175255850504,
-        0.389987785339072,
-        -19.478069841774992
+        -4.639336145909132,
+        0.5618110951081253,
+        7.184658531914787
       ],
       "held": false,
-      "stage": 1,
-      "doors": [
-        false,
-        false,
-        false
-      ],
-      "barrier": false
+      "mechanisms": {
+        "name": "01 / ВМЕСТЕ ЧЕРЕЗ МОСТ",
+        "bridgeCrossed": false,
+        "bridgeLoaded": true,
+        "bridgeProgress": 1,
+        "receiverDeployed": false,
+        "exitLoaded": false,
+        "doorOpen": false,
+        "barrierOpen": false,
+        "nativeModels": [
+          13,
+          14,
+          17,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30
+        ]
+      }
     },
     {
-      "name": "barrier closed after retrieval",
+      "name": "portal retrieves companion and releases bridge",
       "player": [
-        10.793394673504986,
+        2.7016059223777638,
         0,
-        -19.50020669257434
+        -8.996639470877987
       ],
       "cargo": [
-        11.481774335748058,
-        1.059995040452222,
-        -19.711212470746766
-      ],
-      "held": true,
-      "stage": 1,
-      "doors": [
-        false,
-        false,
-        false
-      ],
-      "barrier": false
-    },
-    {
-      "name": "lift carried both",
-      "player": [
-        -5.998747245472971,
-        2.2,
-        -18.48794210220459
-      ],
-      "cargo": [
-        -5.974965434686218,
-        3.260003793847045,
-        -19.20754923493447
-      ],
-      "held": true,
-      "stage": 1,
-      "doors": [
-        false,
-        false,
-        false
-      ],
-      "barrier": false
-    },
-    {
-      "name": "companion retrieved through pressure plate",
-      "player": [
-        0.0012617207985311813,
-        0,
-        -27.390204273047964
-      ],
-      "cargo": [
-        -9.603475315037494,
-        0.3898230200495632,
-        -30.52017429991063
+        4.9040928057252,
+        0.7229107982517647,
+        -7.918726877038997
       ],
       "held": false,
-      "stage": 2,
-      "doors": [
-        false,
-        false,
-        false
-      ],
-      "barrier": false
+      "mechanisms": {
+        "name": "01 / ВМЕСТЕ ЧЕРЕЗ МОСТ",
+        "bridgeCrossed": true,
+        "bridgeLoaded": false,
+        "bridgeProgress": 0.05760380429537047,
+        "receiverDeployed": true,
+        "exitLoaded": false,
+        "doorOpen": false,
+        "barrierOpen": false,
+        "nativeModels": [
+          13,
+          14,
+          17,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30
+        ]
+      }
     },
     {
-      "name": "both crossed the second gap on the launch pad",
+      "name": "companion opens both exit gates",
       "player": [
-        0.04578240347846698,
-        0.14000000029802323,
-        -42.59097842043036
+        -0.3979676195694971,
+        0.17181294878085163,
+        -12.305813912176868
       ],
       "cargo": [
-        0.04576866544117294,
-        1.1999792837174883,
-        -43.311333116265565
-      ],
-      "held": true,
-      "stage": 2,
-      "doors": [
-        false,
-        false,
-        false
-      ],
-      "barrier": false
-    },
-    {
-      "name": "companion retrieved through pressure plate",
-      "player": [
-        -0.23751735540745933,
-        0,
-        -48.390222613906865
-      ],
-      "cargo": [
-        -9.571533088612183,
-        0.3899190695835736,
-        -48.986765285056016
+        -0.37173124476386893,
+        0.5618110951233516,
+        -13.02533307951297
       ],
       "held": false,
-      "stage": 2,
-      "doors": [
-        false,
-        false,
-        false
-      ],
-      "barrier": false
+      "mechanisms": {
+        "name": "01 / ВМЕСТЕ ЧЕРЕЗ МОСТ",
+        "bridgeCrossed": true,
+        "bridgeLoaded": false,
+        "bridgeProgress": 0,
+        "receiverDeployed": true,
+        "exitLoaded": true,
+        "doorOpen": true,
+        "barrierOpen": true,
+        "nativeModels": [
+          13,
+          14,
+          17,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30
+        ]
+      }
     },
     {
-      "name": "both arrived at the exit",
+      "name": "both exit mechanisms close after retrieval",
       "player": [
-        -10.825453988466466,
+        0.000010524236969766539,
         0,
-        -48.99267840582622
+        -22.29464910347053
       ],
       "cargo": [
-        -11.076312520201206,
-        0.39440845406762054,
-        -48.05592089874299
+        6.377084969906741,
+        0.3899303715918613,
+        -22.696034595489408
       ],
       "held": false,
-      "stage": 2,
-      "doors": [
-        false,
-        false,
-        false
+      "mechanisms": {
+        "name": "01 / ВМЕСТЕ ЧЕРЕЗ МОСТ",
+        "bridgeCrossed": true,
+        "bridgeLoaded": false,
+        "bridgeProgress": 0,
+        "receiverDeployed": true,
+        "exitLoaded": false,
+        "doorOpen": false,
+        "barrierOpen": false,
+        "nativeModels": [
+          13,
+          14,
+          17,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30
+        ]
+      }
+    },
+    {
+      "name": "both arrive at the exit",
+      "player": [
+        2.4145800815837544,
+        0,
+        -22.48185390416643
       ],
-      "barrier": false
+      "cargo": [
+        6.377086296060513,
+        0.3899981469181295,
+        -22.69603381090284
+      ],
+      "held": false,
+      "mechanisms": {
+        "name": "01 / ВМЕСТЕ ЧЕРЕЗ МОСТ",
+        "bridgeCrossed": true,
+        "bridgeLoaded": false,
+        "bridgeProgress": 0,
+        "receiverDeployed": true,
+        "exitLoaded": false,
+        "doorOpen": false,
+        "barrierOpen": false,
+        "nativeModels": [
+          13,
+          14,
+          17,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30
+        ]
+      }
     }
   ],
   "geometryChecks": {
     "carry": {
       "blend": 1,
-      "leftError": 8.326672684688674e-17,
-      "rightError": 3.5596458096434965e-15,
+      "leftError": 5.551115123125783e-17,
+      "rightError": 1.7903959895615594e-15,
       "leftClamped": false,
-      "rightClamped": false,
-      "holstered": true
+      "rightClamped": false
     },
     "shotCamera": {
-      "position": 8.523515605135068e-9,
-      "angle": 0,
-      "fov": 0
+      "placed": true,
+      "maxPosition": 0,
+      "maxAngle": 0,
+      "maxFov": 0
     },
     "table": {
       "start": [
-        7.800000000000001,
-        0.1545247354307389,
-        16.83204867839813
+        -5.800000000000001,
+        0,
+        15.801057243347168
       ],
       "finish": [
-        7.800000000000001,
-        1.2545247340896344,
-        15.84523763147688
+        -5.800000000000001,
+        1.049999999701977,
+        14.727701523826706
       ],
-      "peak": 1.6820247354307412,
-      "top": 1.254524735430739,
+      "peak": 1.5275000000000023,
+      "top": 1.0500000000000003,
       "grounded": true
+    },
+    "idleFeet": {
+      "maximumDrift": 2.327628243255304e-10,
+      "secondsObserved": 1.5
     },
     "tableWithCompanion": {
       "grounded": true,
-      "peak": 1.6820247354307412,
-      "top": 1.254524735430739,
+      "peak": 1.5275000000000023,
+      "top": 1.0500000000000003,
       "finish": [
-        7.8,
-        1.2545247340896344,
-        15.939819418119844
+        -5.800000000000001,
+        1.049999999701977,
+        14.832833463136172
       ],
       "sameCompanion": true
     },
     "chairWithCompanion": {
       "grounded": true,
       "peak": 1.5275000000000023,
-      "top": 0.69,
+      "top": 0.7867,
       "finish": [
-        5.4098999997019765,
-        0.6899999986588954,
-        17.1
+        -7.250100002980232,
+        0.786700000745058,
+        12.7
       ],
       "sameCompanion": true
+    },
+    "launchWithCompanion": {
+      "peak": 2.169583330949151,
+      "sameCompanion": true
+    },
+    "recoveryLiftWithCompanion": {
+      "height": 0,
+      "sameCompanion": true
     }
+  },
+  "productionChecks": {
+    "pass": true,
+    "checks": {
+      "source-models": {
+        "pass": true,
+        "detail": {
+          "state": "ready",
+          "modelsLoaded": 18,
+          "missingModels": [],
+          "thirdPerson": true,
+          "stage": 0,
+          "portalsReady": false,
+          "teleportCount": 0,
+          "cameraDistance": 2.7488398565042793,
+          "animation": {
+            "state": "idle",
+            "profile": "lab-anatomical-welded-v1",
+            "boneCount": 14,
+            "sourceAttributesPreserved": true,
+            "backpackRigid": true,
+            "separateLimbMotion": true,
+            "footContact": {
+              "L": 1,
+              "R": 1
+            },
+            "groundContact": {
+              "L": {
+                "locked": true,
+                "blend": 1,
+                "error": 2.482534153247273e-16,
+                "point": [
+                  0.28527070473178334,
+                  0.3715005735036073,
+                  15.334426777852562
+                ]
+              },
+              "R": {
+                "locked": true,
+                "blend": 1,
+                "error": 2.237726045655905e-16,
+                "point": [
+                  -0.24991786501204935,
+                  0.3715005735036073,
+                  15.334426777852562
+                ]
+              }
+            },
+            "locomotion": "idle",
+            "cadenceHz": 0,
+            "movementDirection": {
+              "forward": 1,
+              "right": 0
+            },
+            "bodyInertia": {
+              "forward": 0,
+              "right": 0
+            },
+            "weaponBlend": 0.9999999999622486,
+            "aimBlend": 0,
+            "carryBlend": 0,
+            "recoil": 0,
+            "carryReach": {
+              "blend": 0,
+              "leftError": null,
+              "rightError": null,
+              "leftClamped": false,
+              "rightClamped": false
+            },
+            "airborne": {
+              "phase": "grounded",
+              "age": 0,
+              "lift": 0.2817499994192696,
+              "lead": 1
+            },
+            "attention": {
+              "blend": 0,
+              "yaw": 0,
+              "pitch": 0
+            },
+            "expression": null,
+            "idle": {
+              "blend": 0.9999546000702375,
+              "footTap": 0
+            },
+            "anticipation": 0,
+            "handoff": {
+              "progress": 0,
+              "stowing": false,
+              "blend": 0
+            },
+            "interaction": null,
+            "movingJoints": 13
+          },
+          "device": {
+            "state": "held",
+            "holsterProgress": 0,
+            "transitionBlend": 0,
+            "transitioning": false,
+            "asset": "model-11-portal-gun.glb",
+            "parentBone": "LabHandR",
+            "handAttached": true,
+            "handDistance": 0,
+            "socketDistance": 0,
+            "wristDistance": 0.0837463901181147,
+            "gripWorld": [
+              -0.579152061335234,
+              0.9117899408748701,
+              15.006931634618804
+            ],
+            "palmWorld": [
+              -0.579152061335234,
+              0.9117899408748701,
+              15.006931634618804
+            ],
+            "forwardWorld": [
+              -0.024991970693007293,
+              0.0013386392511573605,
+              -0.9996867556619099
+            ],
+            "sourceGeometryPreserved": true,
+            "sourceMaterialPreserved": true,
+            "worldSize": 0.7,
+            "flashing": false,
+            "portalIndex": 0
+          },
+          "aiming": false,
+          "cargo": {
+            "identity": "67b88534-6ad6-41da-819b-0e4e5a76f8b9",
+            "count": 1,
+            "position": [
+              -2,
+              0.65,
+              12.8
+            ],
+            "held": false,
+            "visible": true,
+            "physics": {
+              "position": {
+                "x": -2,
+                "y": 0.65,
+                "z": 12.8
+              },
+              "quaternion": {
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
+              },
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "angularVelocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "sleeping": false,
+              "carrying": false,
+              "grounded": false,
+              "impact": 0,
+              "alpha": 1
+            },
+            "animation": {
+              "state": "fall",
+              "profile": "responsive-companion-v2",
+              "rigidVisualOnly": true,
+              "sourceAttributesPreserved": true,
+              "elapsed": 1.9999999999999978,
+              "moveBlend": 0,
+              "airBlend": 0.9999999979388463,
+              "curiousBlend": 0,
+              "celebrateBlend": 0,
+              "landing": 0,
+              "landingVelocity": 0,
+              "carryBlend": 0,
+              "tumbleBlend": 0,
+              "reaction": null,
+              "clips": {
+                "curious": null,
+                "celebrate": null
+              },
+              "offset": {
+                "position": {
+                  "x": 0.0020620054872858675,
+                  "y": -0.0068427108236556716,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": -0.012707891529646246,
+                  "y": 0.017992324854747093,
+                  "z": 0.007732520577322002
+                }
+              }
+            },
+            "behavior": {
+              "state": "settling",
+              "anchor": null,
+              "target": null,
+              "recovery": 0,
+              "wanderRadius": 0.8
+            }
+          },
+          "portalRendering": {
+            "cadence": "every-render-frame",
+            "passes": 0,
+            "visible": 0,
+            "nested": 0,
+            "width": 1,
+            "height": 1,
+            "samples": 0,
+            "hdr": false
+          },
+          "renderFrames": 0,
+          "animationFrames": 120,
+          "physicsHz": 120,
+          "mechanisms": {
+            "name": "01 / ВМЕСТЕ ЧЕРЕЗ МОСТ",
+            "bridgeCrossed": false,
+            "bridgeLoaded": false,
+            "bridgeProgress": 0,
+            "receiverDeployed": false,
+            "exitLoaded": false,
+            "doorOpen": false,
+            "barrierOpen": false,
+            "nativeModels": [
+              13,
+              14,
+              17,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30
+            ]
+          }
+        }
+      },
+      "locomotion-jump": {
+        "pass": true,
+        "detail": {
+          "moved": 1.8445904729727243,
+          "peak": 1.5275000000000023,
+          "states": [
+            "anticipate_jump",
+            "jump",
+            "fall",
+            "landing",
+            "stop",
+            "idle"
+          ],
+          "animation": {
+            "state": "idle",
+            "profile": "lab-anatomical-welded-v1",
+            "boneCount": 14,
+            "sourceAttributesPreserved": true,
+            "backpackRigid": true,
+            "separateLimbMotion": true,
+            "footContact": {
+              "L": 0.9999130503271072,
+              "R": 0.9999130503271072
+            },
+            "groundContact": {
+              "L": {
+                "locked": true,
+                "blend": 1,
+                "error": 1.7806883670196607e-15,
+                "point": [
+                  0.28544788888715167,
+                  0.3715005735036073,
+                  12.901331691909455
+                ]
+              },
+              "R": {
+                "locked": true,
+                "blend": 1,
+                "error": 1.776573666601473e-15,
+                "point": [
+                  -0.24974210014152415,
+                  0.3715005735036073,
+                  12.899005739065753
+                ]
+              }
+            },
+            "locomotion": "idle",
+            "cadenceHz": 5.3994566411704866e-8,
+            "movementDirection": {
+              "forward": 0.00033546262705817515,
+              "right": 4.1082323246012417e-20
+            },
+            "bodyInertia": {
+              "forward": -0.00037368791443482814,
+              "right": -4.576357082926622e-20
+            },
+            "weaponBlend": 0.9999999999999989,
+            "aimBlend": 0,
+            "carryBlend": 0,
+            "recoil": 0,
+            "carryReach": {
+              "blend": 0,
+              "leftError": null,
+              "rightError": null,
+              "leftClamped": false,
+              "rightClamped": false
+            },
+            "airborne": {
+              "phase": "grounded",
+              "age": 0,
+              "lift": 0.2816962094635039,
+              "lead": -1
+            },
+            "attention": {
+              "blend": 0.000060887293034945276,
+              "yaw": -0.27999942733542615,
+              "pitch": 0.21999955004926264
+            },
+            "expression": null,
+            "idle": {
+              "blend": 0.9728647101785326,
+              "footTap": 0
+            },
+            "anticipation": 0,
+            "handoff": {
+              "progress": 0,
+              "stowing": false,
+              "blend": 0
+            },
+            "interaction": null,
+            "movingJoints": 13
+          }
+        }
+      },
+      "jump-onto-table": {
+        "pass": true,
+        "detail": {
+          "start": [
+            -5.800000000000001,
+            0,
+            15.801057243347168
+          ],
+          "finish": [
+            -5.800000000000001,
+            1.049999999701977,
+            14.727701523826706
+          ],
+          "peak": 1.5275000000000023,
+          "top": 1.0500000000000003,
+          "grounded": true
+        }
+      },
+      "idle-feet-settle": {
+        "pass": true,
+        "detail": {
+          "maximumDrift": 2.327628243255304e-10,
+          "secondsObserved": 1.5
+        }
+      },
+      "stationary-shot-camera": {
+        "pass": true,
+        "detail": {
+          "placed": true,
+          "maxPosition": 0,
+          "maxAngle": 0,
+          "maxFov": 0
+        }
+      },
+      "companion-contact-and-drop": {
+        "pass": true,
+        "detail": {
+          "carry": {
+            "blend": 1,
+            "leftError": 5.551115123125783e-17,
+            "rightError": 1.7903959895615594e-15,
+            "leftClamped": false,
+            "rightClamped": false
+          },
+          "releaseSnap": 0,
+          "drop": 0.6710048490888165,
+          "transparentShells": [],
+          "physics": {
+            "solver": "cannon-es",
+            "fixedHz": 120,
+            "steps": 2262,
+            "cargoCount": 1,
+            "cargoSize": 0.78,
+            "staticColliders": 75,
+            "carrying": false,
+            "grounded": true,
+            "sleeping": false,
+            "releasePlayerGrace": true,
+            "speed": 0.18494063723382836,
+            "angularSpeed": 0.0853755913747339,
+            "position": [
+              0.0031072258103109077,
+              0.3899981460651005,
+              14.781315218049334
+            ],
+            "automaticTeleports": 0,
+            "portalTransports": 0,
+            "carryError": 0
+          },
+          "companion": {
+            "state": "curious",
+            "profile": "responsive-companion-v2",
+            "rigidVisualOnly": true,
+            "sourceAttributesPreserved": true,
+            "elapsed": 20.850000000000097,
+            "moveBlend": 0.007051442520872843,
+            "airBlend": 1.0866702853216904e-9,
+            "curiousBlend": 0.9999999999999627,
+            "celebrateBlend": 0,
+            "landing": 9.898562480354071e-10,
+            "landingVelocity": -1.3483762049287428e-8,
+            "carryBlend": 2.1042236376771165e-17,
+            "tumbleBlend": 0.006642761741020995,
+            "reaction": null,
+            "clips": {
+              "curious": null,
+              "celebrate": null
+            },
+            "offset": {
+              "position": {
+                "x": 0.015573043354017086,
+                "y": 0.0014603942685108952,
+                "z": 0.005911436928619159
+              },
+              "rotation": {
+                "x": -0.052203444850061655,
+                "y": 0.12926693178252383,
+                "z": 0.0931628555655444
+              }
+            }
+          }
+        }
+      },
+      "portal-carry-together": {
+        "pass": true,
+        "detail": {
+          "teleports": 1,
+          "identity": "67b88534-6ad6-41da-819b-0e4e5a76f8b9",
+          "bodyId": 75,
+          "distance": 1.2835453579040237,
+          "carry": {
+            "blend": 1,
+            "leftError": 3.9968028886505635e-15,
+            "rightError": 4.463041323674983e-15,
+            "leftClamped": false,
+            "rightClamped": false
+          }
+        }
+      },
+      "door-frame-fixed": {
+        "pass": true,
+        "detail": {
+          "progress": 0.999562018257976,
+          "rootTravel": 0,
+          "before": [
+            [
+              -3.3768354512953858,
+              0,
+              -17.980094599723817
+            ],
+            [
+              3.3768354512953858,
+              5.199999999999999,
+              -15.619905433111889
+            ]
+          ],
+          "after": [
+            [
+              -3.651033253040716,
+              0,
+              -17.980094599723817
+            ],
+            [
+              3.651033253040716,
+              5.199999999999999,
+              -15.619905433111889
+            ]
+          ]
+        }
+      },
+      "barrier-frame-fixed": {
+        "pass": true,
+        "detail": {
+          "rootTravel": 0,
+          "progress": 0.9997024713395585,
+          "collision": false
+        }
+      }
+    },
+    "errors": [],
+    "created": "2026-09-05T02:52:09.964Z"
   }
 }

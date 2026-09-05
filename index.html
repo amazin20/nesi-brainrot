@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#12272d" />
-    <meta name="description" content="NESI / Transfer Lab — спокойная 3D-головоломка. Проведи одного друга через три связанные комнаты: исследуй порталы, мосты и подъёмник." />
+    <meta name="description" content="NESI / Transfer Lab — спокойная 3D-головоломка. Новый первый уровень: проведи друга через мастерскую: исследуй порталы, мосты и подъёмник." />
     <title>NESI / Transfer Lab — 3D-игра от третьего лица</title>
   </head>
   <body>
@@ -22,8 +22,8 @@
       <div class="hero-panel">
         <span class="brand">NESI <i></i> МАЛЕНЬКОЕ ПУТЕШЕСТВИЕ</span>
         <h1 id="game-title">TRANSFER<br /><span>LAB</span></h1>
-        <div class="hero-meta"><span>3 связанные комнаты</span><span>Один друг</span><span>Можно не спешить</span></div>
-        <p class="lead">Бегай, прыгай на мебель и исследуй лабораторию вместе с брейнротом. Проходите порталы и взлетайте с батута вдвоём. Белые поверхности принимают порталы; цветные — нет.</p>
+        <div class="hero-meta"><span>01 / Мост для двоих</span><span>Один друг</span><span>Можно не спешить</span></div>
+        <p class="lead">Исследуй мастерскую вместе с брейнротом. Его вес опускает мост и открывает шлюз. Пройди вперёд и забери друга через портал в самой плите. Белые поверхности и нажимные плиты принимают порталы; окрашенные стены — нет.</p>
         <button id="play-button" class="primary-button">Отправиться вместе <span aria-hidden="true">↗</span></button>
         <div class="control-grid" aria-label="Управление">
           <span><kbd>WASD</kbd> движение</span><span><kbd>Мышь</kbd> камера</span>
@@ -33,13 +33,14 @@
           <span><kbd>F</kbd> удерживать прицел</span><span><kbd>X</kbd> сбросить пару</span>
         </div>
         <p class="mobile-note">Слева — движение. Проведи по правой стороне экрана, чтобы повернуть камеру.</p>
-        <div class="hero-footer"><a href="./concepts.html">Новые объекты ↗</a><a href="./gallery.html">Галерея моделей <span aria-hidden="true">↗</span></a><span class="desktop-note">Esc — пауза · R — заново</span></div>
+        <div class="hero-footer"><span class="desktop-note">Esc — пауза · R — заново</span></div>
       </div>
       <div class="start-caption" aria-hidden="true"><span class="caption-line"></span>ИССЛЕДУЙ. ПРОБУЙ. ПОМОГАЙ ДРУГУ.</div>
     </section>
     <header id="hud" class="hud" aria-hidden="true" inert>
       <div class="objective-card">
         <span id="chamber" class="eyebrow">01 / ПРОСТРАНСТВО</span>
+        <p id="objective" class="objective-text">Исследуйте мастерскую вместе.</p>
         <div class="status-row"><span id="cargo-status">Друг ждёт тебя</span><span id="portal-status">Нужна пара порталов</span></div>
       </div>
       <div class="hud-right">
@@ -54,7 +55,6 @@
         <p class="muted">Продолжим с того же места.</p>
         <button id="resume-button" class="primary-button">Продолжить <span aria-hidden="true">→</span></button>
         <button id="restart-button" class="secondary-button">Начать заново</button>
-        <a class="text-link" href="./gallery.html">Посмотреть модели ↗</a>
       </div>
     </section>
     <section id="win-screen" class="screen modal-screen" aria-labelledby="win-title" aria-hidden="true">
@@ -63,7 +63,6 @@
         <h2 id="win-title">Вместе<br />получилось<span>.</span></h2>
         <p class="muted">Вы прошли всю лабораторию, и брейнрот с тобой у выхода. Ещё одна прогулка?</p>
         <button id="play-again-button" class="primary-button">Погулять ещё <span aria-hidden="true">↻</span></button>
-        <a class="text-link" href="./gallery.html">Все модели лаборатории ↗</a>
       </div>
     </section>
     <section id="error-screen" class="screen modal-screen" role="alert" aria-labelledby="error-title" aria-hidden="true">

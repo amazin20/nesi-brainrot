@@ -13,7 +13,11 @@ export const LAB_DEVICE_CALIBRATION = Object.freeze({
   forward: Object.freeze([-1, 0, 0]),
   // The visible glove centre is below/in front of the HandR wrist landmark.
   handOffset: Object.freeze([0.005, 0.025, 0.028]),
-  holsterOffset: Object.freeze([0.27, -0.04, -0.065]),
+  // Measured against the Body-weighted jacket vertices of the actual runtime
+  // player. The old x=.27 socket left a 23 cm gap to the torso.
+  holsterOffset: Object.freeze([0.19, -0.075, -0.13]),
+  mountPoint: Object.freeze([0.1545, -0.141, -0.110]),
+  mountSize: Object.freeze([0.019, 0.040, 0.050]),
   // Matches the animator's shoulder -.31, elbow -.44, wrist +.08 rest hold.
   wristPitch: 0.67,
 });
@@ -87,10 +91,21 @@ export class LabHeldDevice {
     this.handOffset = new THREE.Vector3().fromArray(calibration.handOffset);
     this.holsterOffset = new THREE.Vector3().fromArray(calibration.holsterOffset);
 
+    // A compact docking shoe joins the actual jacket and the tool casing. It
+    // belongs to Body, stays fixed while the tool is drawn, and never inherits
+    // hand recoil. Its inner face overlaps the jacket by a few millimetres;
+    // the outer lip reaches the measured casing without a hovering gap.
+    this.mountMaterial = new THREE.MeshStandardMaterial({ color: 0x203b53, roughness: .66, metalness: .28 });
+    this.holsterMount = new THREE.Mesh(new THREE.BoxGeometry(...(calibration.mountSize || LAB_DEVICE_CALIBRATION.mountSize)), this.mountMaterial);
+    this.holsterMount.name = 'LabDeviceJacketDock';
+    this.holsterMount.position.fromArray(calibration.mountPoint || LAB_DEVICE_CALIBRATION.mountPoint);
+    this.holsterMount.castShadow = true; this.holsterMount.receiveShadow = true;
+    this.bones.Body.add(this.holsterMount);
+
     const sourceToHand = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), calibration.wristPitch)
       .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2));
     this.handQuaternion = sourceToHand.multiply(sourceRotation.clone().invert());
-    // Holster at the outer right hip: emitter down, upper shell toward back.
+    // Holster against the right jacket hem: emitter down, upper shell toward back.
     const holsterBasis = new THREE.Matrix4().makeBasis(
       new THREE.Vector3(0, 0, -1), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 1, 0),
     );
@@ -247,6 +262,9 @@ export class LabHeldDevice {
 
   dispose() {
     this.attachment.removeFromParent();
+    this.holsterMount.removeFromParent();
+    this.holsterMount.geometry.dispose();
+    this.mountMaterial.dispose();
     this.flash.geometry.dispose();
     this.flashMaterial.dispose();
   }

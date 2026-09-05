@@ -30,6 +30,49 @@ function limit(value, maximum) {
   return value;
 }
 
+function rampSamples(ramp) {
+  const { minZ, maxZ, lowY, highY, highAt = 'maxZ', profile } = ramp || {};
+  if (![minZ, maxZ].every(Number.isFinite)) throw new TypeError('Ramp z bounds must be finite');
+  if (!(maxZ > minZ)) throw new RangeError('Ramp needs a positive length');
+  if (highAt !== 'minZ' && highAt !== 'maxZ') throw new RangeError('Ramp highAt must be minZ or maxZ');
+  if (profile == null) {
+    if (![lowY, highY].every(Number.isFinite)) throw new TypeError('Ramp heights must be finite');
+    if (highY < lowY) throw new RangeError('Ramp height range must be ascending');
+    return [{ z: minZ, y: highAt === 'minZ' ? highY : lowY },
+      { z: maxZ, y: highAt === 'maxZ' ? highY : lowY }];
+  }
+  if (!Array.isArray(profile) || profile.length < 2) throw new TypeError('Ramp profile needs at least two samples');
+  for (let i = 0; i < profile.length; i++) {
+    if (![profile[i]?.z, profile[i]?.y].every(Number.isFinite)) throw new TypeError('Ramp profile samples must be finite');
+    if (i && !(profile[i].z > profile[i - 1].z)) throw new RangeError('Ramp profile z values must be strictly increasing');
+  }
+  if (Math.abs(profile[0].z - minZ) > 1e-6 || Math.abs(profile.at(-1).z - maxZ) > 1e-6) {
+    throw new RangeError('Ramp profile must cover both z bounds');
+  }
+  return profile;
+}
+
+/** World-space contact height and normal shared by the player, foot IK and
+ * rigid cargo. The optional authored profile is linear between deck samples;
+ * lowY/highY/highAt retain the original straight-ramp behaviour. Out-of-range
+ * z samples clamp to the closest endpoint; callers check the ramp footprint. */
+export function sampleRampSurface(ramp, z) {
+  if (!Number.isFinite(z)) throw new TypeError('Ramp sample z must be finite');
+  const samples = rampSamples(ramp);
+  const clamped = Math.max(samples[0].z, Math.min(samples.at(-1).z, z));
+  let low = 0, high = samples.length - 1;
+  while (low + 1 < high) {
+    const middle = (low + high) >> 1;
+    if (samples[middle].z <= clamped) low = middle;
+    else high = middle;
+  }
+  const a = samples[low], b = samples[high];
+  const slope = (b.y - a.y) / (b.z - a.z);
+  const normalLength = Math.hypot(1, slope);
+  return { height: a.y + (clamped - a.z) * slope, slope,
+    normal: { x: 0, y: 1 / normalLength, z: -slope / normalLength } };
+}
+
 /**
  * One persistent rigid cargo body, independent of the current chamber and portal
  * renderer. Rendering samples a 120 Hz simulation; no asset vertices are changed.
@@ -81,29 +124,38 @@ export class LabPhysics {
     return body;
   }
 
-  /** One closed convex wedge: its continuous top face matches the player slope. */
-  addStaticRamp(id, { minX, maxX, minZ, maxZ, lowY, highY, highAt = 'maxZ' } = {},
+  /** One static body/id, with closed convex wedges matching the actual deck
+   * profile. Adjacent pieces share their complete end edge without height lips. */
+  addStaticRamp(id, { minX, maxX, minZ, maxZ, lowY, highY, highAt = 'maxZ', profile } = {},
     { friction = .64, restitution = .04, enabled = true } = {}) {
     if (this.solids.has(id)) throw new Error(`Collider already exists: ${id}`);
     if (![minX, maxX, minZ, maxZ, lowY, highY].every(Number.isFinite)) throw new TypeError('Ramp bounds must be finite');
     if (!(maxX > minX && maxZ > minZ && highY >= lowY)) throw new RangeError('Ramp needs positive width/length and an ascending height range');
-    if (highAt !== 'minZ' && highAt !== 'maxZ') throw new RangeError('Ramp highAt must be minZ or maxZ');
+    // Validate the entire profile before creating a body or changing the world.
+    const samples = rampSamples({ minZ, maxZ, lowY, highY, highAt, profile }).map(point => ({ ...point }));
+    samples[0].z = minZ; samples.at(-1).z = maxZ;
     // The small buried base gives the low end real volume while keeping its
     // walking/contact height exactly lowY. It introduces no lip above ground.
-    const base = lowY - .20;
-    const { half, center } = dimensions({ min: [minX, base, minZ], max: [maxX, highY, maxZ] });
-    const near = highAt === 'minZ' ? highY : lowY, far = highAt === 'maxZ' ? highY : lowY;
-    const points = [
-      [minX, base, minZ], [maxX, base, minZ], [maxX, near, minZ], [minX, near, minZ],
-      [minX, base, maxZ], [maxX, base, maxZ], [maxX, far, maxZ], [minX, far, maxZ],
-    ];
-    const vertices = points.map(point => vector(point).vsub(center));
+    const actualLow = Math.min(...samples.map(point => point.y));
+    const actualHigh = Math.max(...samples.map(point => point.y));
+    const base = actualLow - .20;
+    const { half, center } = dimensions({ min: [minX, base, minZ], max: [maxX, actualHigh, maxZ] });
     const faces = [[3, 2, 1, 0], [4, 5, 6, 7], [5, 4, 0, 1], [2, 3, 7, 6], [0, 4, 7, 3], [1, 2, 6, 5]];
     const body = new Body({ mass: 0, type: Body.STATIC, allowSleep: false, position: center,
-      shape: new ConvexPolyhedron({ vertices, faces }), material: new Material({ friction, restitution }),
+      material: new Material({ friction, restitution }),
       collisionFilterGroup: SOLID, collisionFilterMask: enabled ? CARGO : 0 });
+    for (let i = 1; i < samples.length; i++) {
+      const a = samples[i - 1], b = samples[i];
+      const segmentCenter = new Vec3(center.x, (base + Math.max(a.y, b.y)) / 2, (a.z + b.z) / 2);
+      const points = [
+        [minX, base, a.z], [maxX, base, a.z], [maxX, a.y, a.z], [minX, a.y, a.z],
+        [minX, base, b.z], [maxX, base, b.z], [maxX, b.y, b.z], [minX, b.y, b.z],
+      ];
+      const vertices = points.map(point => vector(point).vsub(segmentCenter));
+      body.addShape(new ConvexPolyhedron({ vertices, faces }), segmentCenter.vsub(center));
+    }
     body.labId = id;
-    this.solids.set(id, { body, half, target: center.clone(), remaining: 0, kind: 'ramp' });
+    this.solids.set(id, { body, half, target: center.clone(), remaining: 0, kind: 'ramp', profile: samples });
     this.world.addBody(body); this.cargoBody?.wakeUp();
     return body;
   }

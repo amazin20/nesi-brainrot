@@ -28,7 +28,7 @@ export function createEvidenceDriver(game) {
   const step = seconds => {
     const ticks = Math.round(seconds / DT);
     for (let tick = 0; tick < ticks; tick++) {
-      game.updatePlaying(DT);
+      if (game.state === 'playing' || game.state === undefined) game.updatePlaying(DT);
       if (tick % 2) game.updateVisuals(1 / FPS, 1);
     }
     if (ticks % 2) game.updateVisuals(DT, 1);
@@ -46,6 +46,7 @@ export function createEvidenceDriver(game) {
   const goto = (x, z, limit = 16) => {
     let reached = false;
     for (let i = 0; i < limit * FPS; i++) {
+      if (game.state === 'won') { reached = true; break; }
       const dx = x - game.playerPosition.x, dz = z - game.playerPosition.z;
       if (Math.hypot(dx, dz) < .15) { reached = true; break; }
       game.yaw = Math.atan2(-dx, -dz); key('KeyW'); step(1 / FPS);
@@ -54,6 +55,15 @@ export function createEvidenceDriver(game) {
     assert(reached, `Route blocked toward ${x},${z}; player=${game.playerPosition.toArray()}; cargo=${game.cargo.position.toArray()}`);
   };
   const aimPanel = (index, stage, side = index, offset = new THREE.Vector3()) => {
+    if (game.firstLevel) {
+      const normal = side === 0 ? 1 : -1;
+      const panel = game.portalPanels.find(p => p.userData.stage === stage && Math.sign(p.userData.normal?.x || 0) === normal);
+      assert(panel, `Missing first-level wall ${stage}/${side}`);
+      const point = new THREE.Vector3(panel.userData.center.x, 1.8, stage === 0 ? 16.25 : -22.5).add(offset);
+      aimEvidencePoint(game, point);
+      assert(game.placePortal(index), `First-level wall shot rejected: ${index}`);
+      return panel;
+    }
     const targets = [[[1, 15], [1, 1.2]], [[-1, -9], [-1, -21]], [[1, -30], [-1, -43]]];
     const [normal, z] = targets[stage][side];
     const panel = game.portalPanels.filter(p => p.userData.stage === stage && Math.sign(p.userData.normal.x) === normal)
@@ -125,8 +135,8 @@ export function fireReelPortal(game, driver, index, stage = 0) {
 }
 
 export function createReel(game, driver) {
-  driver.reset(); driver.fixturePlayer(0, 0, 17);
-  game.physics.resetCargo({ position: [0, .43, 15.9] }); driver.step(.8);
+  driver.reset(); driver.fixturePlayer(0, 0, 15.5);
+  game.physics.resetCargo({ position: [0, .43, 14.4] }); driver.step(.8);
   const frameStep = createEvidenceFrameStepper(game);
   const shots = [];
   let previousTime = -1;
@@ -146,6 +156,9 @@ export function createReel(game, driver) {
       }
       at(4.45, () => shots.push({ time, ...fireReelPortal(game, driver, 0) }));
       at(4.85, () => shots.push({ time, ...fireReelPortal(game, driver, 1) }));
+      // The linked pair has its own WebGL view checks and half a second in
+      // this shot segment. Later close-ups review the jump and body animation.
+      at(5.35, () => game.clearPortals());
       at(5.4, () => { game.input.jumpQueued = true; });
       at(7.2, () => { game.animator.trigger('celebrate'); game.companionAnimator.trigger('celebrate'); });
       at(8.9, () => game.animator.trigger('curious'));
@@ -165,92 +178,82 @@ export function createReel(game, driver) {
 
 export function runContinuousJourney(g, s) {
   g.resetRun(true); s.step(.7);
-  const cargo = g.cargo, body = g.physics.cargoBody, resetCargo = g.physics.resetCargo;
+  const level = g.firstLevel;
+  assert(level, 'Continuous journey requires the rebuilt first level');
+  const cargo = g.cargo, body = g.physics.cargoBody, resetCargo = g.physics.resetCargo, restart = g.restart, respawn = g.respawn;
+  const fixturePlayer = s.fixturePlayer;
   const identity = cargo.group.uuid, routeLog = [];
   g.physics.resetCargo = () => { throw new Error('Cargo reset during continuous journey'); };
+  g.restart = () => { throw new Error('Player respawn during continuous journey'); };
+  g.respawn = () => { throw new Error('Player respawn during continuous journey'); };
+  s.fixturePlayer = () => { throw new Error('Player fixture during continuous journey'); };
   const mark = name => {
     assert(g.cargo === cargo && g.physics.cargoBody === body && g.cubes.length === 1 && cargo.group.visible, 'Companion identity changed');
     if (typeof window === 'undefined') console.log('Journey:', name);
     routeLog.push({ name, player: g.playerPosition.toArray(), cargo: cargo.position.toArray(), held: Boolean(g.heldCube),
-      stage: g.stage, doors: g.doors.map(d => d.opened), barrier: g.mechanisms.barrier.opened });
+      mechanisms: level.diagnostics() });
   };
-  const shoot = (index, panel, point) => {
+  const shoot = (index, surface, point) => {
     assert(!g.heldCube, 'Cannot shoot while holding a companion');
     aimEvidencePoint(g, point);
     assert(g.placePortal(index), `Real shot rejected: ${index} at ${point.toArray()}`);
-    assert(g.portalSurfaceIds[index] === panel.uuid, 'A different surface intercepted the shot');
-  };
-  const wall = (index, stage, side, z) => {
-    const panels = g.portalPanels.filter(p => p.userData.stage === stage && Math.sign(p.userData.normal.x) === side);
-    const panel = panels.sort((a,b) => Math.abs(a.userData.center.z-z)-Math.abs(b.userData.center.z-z))[0];
-    assert(panel, 'Wall panel missing');
-    shoot(index, panel, new THREE.Vector3(panel.userData.center.x, 1.9, z));
+    assert(g.portalSurfaceIds[index] === surface.uuid, `A different surface intercepted the shot toward ${point.toArray()}`);
   };
   const pickup = () => {
     s.pressE(); s.step(.8);
     assert(g.heldCube === cargo, `Cannot pick up at ${g.playerPosition.toArray()}, companion ${cargo.position.toArray()}`);
   };
-  const releaseOnPad = (pad, opened) => {
-    const p = pad.position;
-    s.goto(p.x, p.z + 2.4); s.goto(p.x, p.z + .85); s.step(.7);
-    s.pressE(); s.step(1.4);
-    assert(opened(), `Pressure plate did not activate: ${p.toArray()}, cargo ${cargo.position.toArray()}`);
-  };
-  const retrieve = (pad, stage, side, z, aimOffset = 0, prepared = false) => {
-    const before = g.physics.portalTransports;
-    wall(1, stage, side, z);
-    if (!prepared) shoot(0, pad.top, pad.top.position.clone().add(new THREE.Vector3(aimOffset, 0, .3)));
-    s.step(1.1);
-    assert(g.physics.portalTransports > before, 'Loose companion did not leave the pressure plate through its portal');
-    mark('companion retrieved through pressure plate');
-    if (g.state !== 'won') {
-      s.goto(cargo.position.x - side * 1.15, cargo.position.z);
-      if (g.state !== 'won') pickup();
-    }
+  const releaseOnPad = pad => {
+    s.goto(pad.position.x, pad.position.z + 2.4);
+    s.goto(pad.position.x, pad.position.z + .85); s.step(.6);
+    s.pressE(); s.step(1.3);
+    assert(pad.pressed, `Pressure plate did not activate: ${pad.position.toArray()}, cargo ${cargo.position.toArray()}`);
   };
   try {
-    // Two real wall shots open an optional route across the first gap.
-    wall(0, 0, -1, 15); wall(1, 0, -1, 1.2);
+    g.clearPortals();
+    shoot(0, level.bridgePad.top, level.bridgePad.mechanism.getPortalFrame().center);
+    assert(!g.portals.ready && !level.bridge.active, 'A single empty-pad portal must not activate the bridge');
     s.goto(cargo.position.x, cargo.position.z + 1.1); pickup();
-    s.goto(0, 19.2); s.goto(10.3, 19.2); s.goto(10.3, 15); g.yaw = -Math.PI / 2; s.key('KeyW');
-    for (let i = 0; i < 160 && !g.teleportCount; i++) s.step(1/60);
-    s.key('KeyW', false); s.step(.5);
-    assert(g.teleportCount === 1 && g.heldCube === cargo, 'First paired traversal failed'); mark('both crossed the first gap');
-    s.goto(-5, 2.7); s.pressE(); s.step(4);
-    assert(g.mechanisms.bridges[0].active, 'Bridge terminal did not activate');
-    releaseOnPad(g.doors[0].pad, () => g.doors[0].opened);
-    s.goto(0, 1); s.goto(0, -5);
-    retrieve(g.doors[0].pad, 1, 1, -7, -1.2);
-    assert(!g.doors[0].opened, 'First door stayed latched after retrieval'); mark('first door released its weight circuit');
-
-    releaseOnPad(g.mechanisms.chargePad, () => g.mechanisms.barrier.opened);
-    s.goto(0, -12); s.goto(0, -16.1);
-    retrieve(g.mechanisms.chargePad, 1, -1, -19.5, 1);
-    assert(!g.mechanisms.barrier.opened, 'Energy barrier stayed latched'); mark('barrier closed after retrieval');
-    s.goto(0, -16.3); s.goto(-6, -16.3); s.goto(-6, -18.45); s.step(4.8);
-    assert(g.playerPosition.y > 2.05 && g.heldCube === cargo, 'Lift did not carry both'); mark('lift carried both');
-    s.goto(-6, -21); g.clearPortals();
-    releaseOnPad(g.doors[1].pad, () => g.doors[1].opened);
-    shoot(0, g.doors[1].pad.top, g.doors[1].pad.top.position);
-    s.step(.5); assert(g.doors[1].opened && !g.portals.ready, 'Unpaired pad portal must preserve weight');
-    s.goto(-2.2, -23.5); s.step(.8); s.goto(0, -24); s.goto(0, -26.9);
-    retrieve(g.doors[1].pad, 2, 1, -30.5, 0, true);
-    assert(!g.doors[1].opened, 'Second door stayed latched');
-
-    s.goto(-3, -29); s.goto(0, -30.1); g.yaw = 0; s.key('KeyW');
-    for (let i = 0; i < 220 && g.playerPosition.z > -41; i++) s.step(1/60);
-    s.key('KeyW', false); s.step(.7);
-    assert(g.playerPosition.z < -40 && g.playerPosition.y > -.2 && g.heldCube === cargo, 'Loaded launch did not clear the gap');
-    mark('both crossed the second gap on the launch pad');
-    s.goto(4, -41.3); s.pressE(); s.step(4);
-    assert(g.mechanisms.bridges[1].active, 'Return bridge did not activate');
-    releaseOnPad(g.doors[2].pad, () => g.doors[2].opened);
-    s.goto(0, -47.8); retrieve(g.doors[2].pad, 2, 1, -49);
-    if (g.state !== 'won') s.goto(cargo.position.x, -49);
-    s.step(.4); mark('both arrived at the exit');
-    assert(g.state === 'won', 'Exit did not accept both companions');
-    return { identity, bodyId: body.id, cargoResets: 0, completed: true, state: g.state, milestones: routeLog };
-  } finally { g.physics.resetCargo = resetCargo; }
+    releaseOnPad(level.bridgePad); s.step(3.2);
+    assert(level.bridge.active && level.bridge.floor.enabled, 'Weight did not lower a walkable bridge');
+    mark('companion lowers counterweight bridge');
+    s.goto(0, 8.8); s.goto(0, 3.6); s.goto(0, -2.5);
+    assert(g.playerPosition.y > -.1 && level.bridge.progress > .999, 'Player did not walk across the real bridge');
+    mark('player crosses the loaded bridge');
+    s.goto(-2.5, -2.5); s.goto(-2.5, -8.8); s.goto(2.7, -8.8); s.pressE(); s.step(2.3);
+    assert(level.receiverPanel.deployed, 'Far-bank terminal did not rotate the receiving panel');
+    s.goto(2.7, -9.0);
+    const cargoTransports = g.physics.portalTransports;
+    shoot(1, level.receiverPanel.top, level.receiverPanel.mechanism.getPortalFrame().center);
+    s.step(1.2);
+    assert(g.physics.portalTransports > cargoTransports && cargo.position.z < -3, 'Companion did not return through actual pad/panel surfaces');
+    assert(!level.bridgePad.pressed && !level.bridge.active, 'Removing the weight left bridge circuit latched');
+    mark('portal retrieves companion and releases bridge');
+    s.goto(cargo.position.x - 1.2, cargo.position.z); pickup();
+    s.goto(6, -8.6); s.goto(6, -10.7); s.goto(3.4, -10.8);
+    g.clearPortals(); s.pressE(); s.step(.8);
+    shoot(0, level.exitPad.top, level.exitPad.mechanism.getPortalFrame().center);
+    pickup(); releaseOnPad(level.exitPad); s.step(1.5);
+    assert(level.exitDoor.progress > .95 && level.barrier.progress > .95, 'Exit weight did not open door and barrier');
+    mark('companion opens both exit gates');
+    s.goto(0, -16); s.goto(0, -18.5); s.goto(0, -22.2);
+    const exitWall = g.portalPanels.find(panel => panel.userData.stage === 2 && panel.userData.normal?.x < -.5);
+    assert(exitWall, 'Exit wall portal surface missing');
+    const beforeExit = g.physics.portalTransports;
+    shoot(1, exitWall, new THREE.Vector3(exitWall.userData.center.x, 1.8, -22.5));
+    s.step(1.2);
+    assert(g.physics.portalTransports > beforeExit && cargo.position.z < -20.9, 'Companion failed to exit through the weight plate');
+    assert(!level.exitPad.pressed && !level.exitDoor.opened && !level.barrier.opened, 'Exit circuit did not close when unloaded');
+    s.step(1.8);
+    assert(level.exitDoor.progress < .05 && level.barrier.progress < .05, 'Exit mechanisms did not visually close again');
+    mark('both exit mechanisms close after retrieval');
+    s.goto(cargo.position.x - 1.2, cargo.position.z);
+    if (g.state !== 'won') pickup();
+    s.step(.4); mark('both arrive at the exit');
+    assert(g.state === 'won', 'Exit did not accept player and the same companion');
+    return { identity, bodyId: body.id, cargoResets: 0, playerRespawns: 0, completed: true,
+      level: 'first-level-weight-and-return', state: g.state, milestones: routeLog };
+  } finally { g.physics.resetCargo = resetCargo; g.restart = restart; g.respawn = respawn; s.fixturePlayer = fixturePlayer; }
 }
 
 export function jumpOntoTable(game, driver) {
@@ -271,16 +274,16 @@ export function jumpOntoTable(game, driver) {
   return { start: start.toArray(), finish: game.playerPosition.toArray(), peak, top: table.top, grounded: game.playerGrounded };
 }
 
-async function runChecks(game, driver, progress) {
+export async function runChecks(game, driver, progress = () => {}, { includeRender = true, includeJourney = true } = {}) {
   const report = { pass: false, checks: {}, errors: [], created: new Date().toISOString() };
   const check = async (name, test) => {
-    progress(`Проверка: ${name}`); await yieldFrame();
+    progress(`Проверка: ${name}`); if (typeof requestAnimationFrame !== 'undefined') await yieldFrame();
     try { report.checks[name] = { pass: true, detail: cloneJSON(await test()) }; }
     catch (error) { report.checks[name] = { pass: false, error: String(error.stack || error) }; report.errors.push(`${name}: ${error.message}`); }
   };
   await check('source-models', () => {
     const d = game.diagnostics();
-    assert(d.modelsLoaded === 19 && d.missingModels.length === 0, 'All 19 source-backed models must load');
+    assert(d.modelsLoaded === 18 && d.missingModels.length === 0, 'All 18 runtime level models must load');
     assert(d.animation.sourceAttributesPreserved && d.animation.boneCount >= 14, 'Player source appearance and skeleton');
     assert(d.cargo.count === 1 && d.physicsHz === 120, 'One companion and 120 Hz physics');
     return d;
@@ -296,8 +299,23 @@ async function runChecks(game, driver, progress) {
     return { moved, peak, states: [...states], animation: game.animator.diagnostics };
   });
   await check('jump-onto-table', () => jumpOntoTable(game, driver));
+  await check('idle-feet-settle', () => {
+    driver.reset(); driver.key('KeyW'); driver.step(.5); driver.key('KeyW', false); driver.step(2.5);
+    const left = game.animator.bones.FootL.getWorldPosition(new THREE.Vector3());
+    const right = game.animator.bones.FootR.getWorldPosition(new THREE.Vector3());
+    let maximumDrift = 0;
+    for (let i = 0; i < 90; i++) {
+      driver.step(1 / FPS);
+      maximumDrift = Math.max(maximumDrift,
+        left.distanceTo(game.animator.bones.FootL.getWorldPosition(new THREE.Vector3())),
+        right.distanceTo(game.animator.bones.FootR.getWorldPosition(new THREE.Vector3())));
+    }
+    assert(maximumDrift < .006, `Idle feet keep moving after stopping: ${maximumDrift} m`);
+    return { maximumDrift, secondsObserved: 1.5 };
+  });
+
   await check('stationary-shot-camera', () => {
-    driver.reset(); driver.fixturePlayer(-6.5, 0, 15, Math.PI * 1.5); game.pitch = 0; driver.step(2);
+    driver.reset(); driver.fixturePlayer(0, 0, 15.5); driver.aimPanel(0, 0); driver.step(2);
     const before = { p: game.camera.position.clone(), q: game.camera.quaternion.clone(), fov: game.camera.fov };
     let maxPosition = 0, maxAngle = 0, maxFov = 0;
     const placed = game.placePortal(0);
@@ -312,8 +330,8 @@ async function runChecks(game, driver, progress) {
     return { placed, maxPosition, maxAngle, maxFov };
   });
   await check('companion-contact-and-drop', () => {
-    driver.reset(); driver.fixturePlayer(0, 0, 17);
-    game.physics.resetCargo({ position: [0, .43, 15.9] }); driver.step(.2); driver.pressE(); driver.step(1.8);
+    driver.reset(); driver.fixturePlayer(0, 0, 15.5);
+    game.physics.resetCargo({ position: [0, .43, 14.4] }); driver.step(.2); driver.pressE(); driver.step(1.8);
     const carry = cloneJSON(game.animator.diagnostics.carryReach);
     assert(game.heldCube === game.cargo, 'Companion pickup failed');
     assert(carry && carry.leftError < .13 && carry.rightError < .13, 'Hands are not in contact with the carried companion');
@@ -331,10 +349,10 @@ async function runChecks(game, driver, progress) {
     driver.step(2); return { carry, releaseSnap, drop, transparentShells, physics: game.physics.diagnostics, companion: game.companionAnimator.diagnostics };
   });
   await check('portal-carry-together', () => {
-    driver.reset(); driver.fixturePlayer(-9.7, 0, 15);
+    driver.reset(); driver.fixturePlayer(0, 0, 15.5);
     driver.aimPanel(0, 0); driver.aimPanel(1, 0); driver.step(1);
-    driver.fixturePlayer(-10.05, 0, 15, -Math.PI / 2);
-    game.physics.resetCargo({ position: [-10.72, .43, 15] }); driver.step(.1); driver.pressE(); driver.step(1.1);
+    driver.fixturePlayer(-7.55, 0, 16.25, -Math.PI / 2);
+    game.physics.resetCargo({ position: [-8.25, .43, 16.25] }); driver.step(.1); driver.pressE(); driver.step(1.1);
     assert(game.heldCube === game.cargo, 'Portal fixture pickup failed');
     const cargo = game.cargo, body = game.physics.cargoBody, before = game.teleportCount;
     game.yaw = 0; driver.key('KeyA');
@@ -344,8 +362,8 @@ async function runChecks(game, driver, progress) {
     assert(game.playerPosition.distanceTo(cargo.position) < 2, 'Companion separated at portal exit');
     return { teleports: game.teleportCount - before, identity: cargo.group.uuid, bodyId: body.id, distance: game.playerPosition.distanceTo(cargo.position), carry: game.animator.diagnostics.carryReach };
   });
-  await check('portal-images-every-frame', () => {
-    driver.reset(); driver.fixturePlayer(-9.7, 0, 15); driver.aimPanel(0, 0); driver.aimPanel(1, 0); driver.step(.5);
+  if (includeRender) await check('portal-images-every-frame', () => {
+    driver.reset(); driver.fixturePlayer(0, 0, 15.5); driver.aimPanel(0, 0); driver.aimPanel(1, 0); driver.step(.5);
     const entry = game.portals.portals[0];
     game.camera.position.copy(entry.position).addScaledVector(entry.normal, 5); game.camera.lookAt(entry.position); game.camera.updateMatrixWorld(true);
     game.render(); const first = cloneJSON(game.portals.diagnostics);
@@ -370,7 +388,7 @@ async function runChecks(game, driver, progress) {
     assert(barrier.collider.enabled === false, 'An opened energy field must allow movement');
     return { rootTravel: barrier.art.position.distanceTo(before), progress: barrier.progress, collision: barrier.collider.enabled };
   });
-  await check('continuous-three-room-journey', () => runContinuousJourney(game, driver));
+  if (includeJourney) await check('continuous-first-level-journey', () => runContinuousJourney(game, driver));
   report.pass = report.errors.length === 0;
   return report;
 }
@@ -417,8 +435,8 @@ export function mountLabEvidence(game) {
     game.camera.lookAt(p.x, p.y + 1.25, p.z); game.camera.updateMatrixWorld(true);
   };
   const pose = (name, apply) => {
-    stop(); prepareReview(); driver.reset(); driver.fixturePlayer(0, 0, 17);
-    game.physics.resetCargo({ position: [0, .43, 15.9] }); driver.step(.4);
+    stop(); prepareReview(); driver.reset(); driver.fixturePlayer(0, 0, 15.5);
+    game.physics.resetCargo({ position: [0, .43, 14.4] }); driver.step(.4);
     apply(); closeCamera(); render();
     const preview = panel.querySelector('#evidence-preview'); preview.src = game.renderer.domElement.toDataURL('image/png'); preview.style.display = 'block';
     say(`Поза: ${name}`); panel.dataset.pose = name;
@@ -434,7 +452,7 @@ export function mountLabEvidence(game) {
   });
   button('Радость', 'evidence-happy', () => pose('happy', () => { game.animator.trigger('celebrate'); game.companionAnimator.trigger('celebrate'); driver.step(.7); }));
   button('Порталы', 'evidence-portals', () => {
-    stop(); prepareReview(); driver.reset(); driver.fixturePlayer(-9.7, 0, 15);
+    stop(); prepareReview(); driver.reset(); driver.fixturePlayer(0, 0, 15.5);
     driver.aimPanel(0, 0); driver.aimPanel(1, 0); driver.step(.8);
     const entry = game.portals.portals[0];
     game.camera.position.copy(entry.position).addScaledVector(entry.normal, 5); game.camera.lookAt(entry.position); game.camera.updateMatrixWorld(true); render();
@@ -446,8 +464,12 @@ export function mountLabEvidence(game) {
     const mechanism = kind === 'door' ? game.doors[0] : game.mechanisms.barrier;
     if (opened) { const pad = kind === 'door' ? mechanism.pad : game.mechanisms.chargePad; game.physics.resetCargo({ position: pad.position.clone().add(new THREE.Vector3(0, .6, 0)) }); }
     driver.step(2.3);
-    const z = kind === 'door' ? game.doors[0].z : game.mechanisms.barrier.mesh.position.z;
-    game.camera.position.set(0, 2.5, z + 7.2); game.camera.lookAt(0, 2.5, z); game.camera.updateMatrixWorld(true); render();
+    const z = kind === 'door' ? game.doors[0].z : game.mechanisms.barrier.position?.z ?? game.mechanisms.barrier.mesh.position.z;
+    // Each gate is photographed from its own room so the other closed gate
+    // and the puzzle's elbow wall cannot conceal the mechanism under review.
+    const cameraZ = game.firstLevel ? z + (kind === 'door' ? 4.6 : -4.4) : z + 7.2;
+    const cameraY = kind === 'door' ? 2.6 : 1.9;
+    game.camera.position.set(0, cameraY, cameraZ); game.camera.lookAt(0, cameraY, z); game.camera.updateMatrixWorld(true); render();
     const preview = panel.querySelector('#evidence-preview'); preview.src = game.renderer.domElement.toDataURL('image/png'); preview.style.display = 'block';
     panel.dataset.pose = `${kind}-${opened ? 'open' : 'closed'}`; say(`${kind === 'door' ? 'Дверь' : 'Барьер'}: ${opened ? 'открыто' : 'закрыто'}`);
   };
@@ -455,12 +477,45 @@ export function mountLabEvidence(game) {
   button('Дверь открыта', 'evidence-door-open', () => mechanismPose('door', true));
   button('Барьер', 'evidence-barrier-closed', () => mechanismPose('barrier', false));
   button('Барьер открыт', 'evidence-barrier-open', () => mechanismPose('barrier', true));
+  const firstLevelPose = (name, setup, message) => {
+    stop(); prepareReview(); driver.reset();
+    assert(game.firstLevel, 'First-level artwork is unavailable');
+    setup(game.firstLevel); game.camera.updateMatrixWorld(true); render();
+    const preview = panel.querySelector('#evidence-preview');
+    preview.src = game.renderer.domElement.toDataURL('image/png'); preview.style.display = 'block';
+    panel.dataset.pose = name; say(message);
+  };
+  button('Мост под нагрузкой', 'evidence-bridge-loaded', () => firstLevelPose('bridge-loaded', level => {
+    game.physics.resetCargo({ position: level.bridgePad.position.clone().add(new THREE.Vector3(0, .6, 0)) });
+    driver.step(3.4);
+    assert(level.bridgePad.pressed && level.bridge.active && level.bridge.floor.enabled,
+      'The companion must lower the actual walkable bridge');
+    game.camera.position.set(6.7, 4.9, 8.8); game.camera.lookAt(-.7, -.1, .7);
+  }, 'Брейнрот удерживает плиту. Настоящий настил моста опущен через ров.'));
+  button('Поворотная панель', 'evidence-receiver-panel', () => firstLevelPose('receiver-panel', level => {
+    const receiver = level.receiverPanel, control = receiver.control.position;
+    driver.fixturePlayer(control.x - 1.2, 0, control.z, Math.PI / 2); driver.step(.1);
+    driver.pressE(); driver.step(2.4);
+    assert(receiver.deployed && receiver.progress < .01, 'The real terminal must deploy the receiving panel');
+    game.camera.position.set(receiver.position.x - 5, 4.8, receiver.position.z - 3.3);
+    game.camera.lookAt(receiver.position.x, 1.4, receiver.position.z);
+  }, 'Терминал поворачивает рабочую часть модели 28; опоры остаются на месте.'));
+  button('Портал в самой плите', 'evidence-pad-surface', () => firstLevelPose('pad-surface', level => {
+    const pad = level.bridgePad;
+    driver.fixturePlayer(pad.position.x, 0, pad.position.z + 4.8);
+    driver.step(.2); aimEvidencePoint(game, pad.mechanism.getPortalFrame().center);
+    assert(game.placePortal(0) && game.portalSurfaceIds[0] === pad.top.uuid,
+      'The shot must hit the authored pressure-pad surface');
+    driver.step(.2);
+    game.camera.position.copy(pad.position).add(new THREE.Vector3(2.7, 4.1, 4.3));
+    game.camera.lookAt(pad.position);
+  }, 'Портал открыт прямо в поверхности модели 29. Отдельной белой накладки нет.'));
   button('Проверки', 'evidence-check', async () => {
     stop(); prepareReview(); state.busy = true; panel.dataset.status = 'checking';
     const report = await runChecks(game, driver, say); state.report = report; reportEl.textContent = JSON.stringify(report, null, 2);
     state.busy = false; panel.dataset.status = report.pass ? 'pass' : 'fail';
     say(report.pass ? 'Все проверки пройдены.' : `${report.errors.length} проверок требуют исправления.`);
-    download(new Blob([reportEl.textContent], { type: 'application/json' }), 'lab-evidence-v4.json'); render();
+    download(new Blob([reportEl.textContent], { type: 'application/json' }), 'lab-evidence-v6.json'); render();
   });
   const makeFrameCanvas = () => { const canvas = document.createElement('canvas'); canvas.width = 960; canvas.height = 720; return canvas; };
   const drawFrame = (canvas, label) => {
@@ -540,7 +595,7 @@ export function mountLabEvidence(game) {
       assert(report.shots.length === 2 && report.shots.every(shot => shot.placed), 'The reel must contain two successful gameplay shots');
       entries.push({ name: 'report.json', blob: new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }) });
       say('Собираю архив с кадрами…'); const zip = await makeStoredZip(entries);
-      download(zip, 'nesi-animation-v4-60fps-frames.zip', 'Скачать 600 кадров · 60 FPS');
+      download(zip, 'nesi-animation-v6-60fps-frames.zip', 'Скачать 600 кадров · 60 FPS');
       reportEl.textContent = JSON.stringify(report, null, 2); panel.dataset.status = 'frames-ready'; panel.dataset.frames = String(FRAME_COUNT);
       say('Готово: 600 разных шагов анимации, 1200 шагов физики. 10 секунд при 60 FPS.');
     } finally { restore(); state.busy = false; }
@@ -567,7 +622,7 @@ export function mountLabEvidence(game) {
         say(`Видео: ${simulation.toFixed(1)} / 10 с анимации · ${Math.round(frames / Math.max(elapsed, .001))} кадров/с`);
       }
       recorder.stop(); await ended;
-      download(new Blob(chunks, { type: mimeType }), 'nesi-animation-v4-realtime.webm', 'Скачать видео WebM');
+      download(new Blob(chunks, { type: mimeType }), 'nesi-animation-v6-realtime.webm', 'Скачать видео WebM');
       reportEl.textContent = JSON.stringify({ kind: 'realtime-production-showcase', frames, duration: elapsed, actualAverageFPS: frames / elapsed, simulatedDuration: simulation, requestedFrameDuplication: false, shots: reel.diagnostics.shots }, null, 2);
       panel.dataset.status = 'video-ready'; say(`Видео готово. Фактическая частота записи: ${(frames / elapsed).toFixed(1)} кадров/с.`);
     } finally {
@@ -577,7 +632,7 @@ export function mountLabEvidence(game) {
   });
   button('Скриншот', 'evidence-screenshot', async () => {
     render(); const blob = await new Promise(resolve => game.renderer.domElement.toBlob(resolve, 'image/png'));
-    assert(blob, 'Screenshot encoder returned no data'); download(blob, `nesi-v4-${panel.dataset.pose || 'level'}.png`);
+    assert(blob, 'Screenshot encoder returned no data'); download(blob, `nesi-v6-${panel.dataset.pose || 'level'}.png`);
   });
   button('Играть', 'evidence-play', () => {
     stop(); prepareReview(); game.input.keys.clear(); game.lastFrame = performance.now(); game.state = 'playing'; game.renderer.setAnimationLoop(game.animate); say('Игровой режим.');

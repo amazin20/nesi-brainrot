@@ -147,7 +147,7 @@ test('turn-in-place alternates support and reverses the torso yaw with turn dire
   assert.ok(Math.abs(animator.jointTargets.Body.z) < 0.001);
 });
 
-test('jump, fall, phase and landing have airborne contacts, impact compression and recovery', () => {
+test('jump and landing articulate while a grounded portal crossing preserves foot contact', () => {
   const { animator, states } = makeAnimator();
   advance(animator, 30, { grounded: false, velocity: new THREE.Vector3(0, 3, 0) });
   assert.equal(animator.state, 'jump');
@@ -164,7 +164,7 @@ test('jump, fall, phase and landing have airborne contacts, impact compression a
   assert.ok(Math.abs(animator.bones.Body.position.z - animator.rig.rest.Body.z) < 0.001);
   animator.update({ phase: true });
   assert.equal(animator.state, 'phase');
-  assert.deepEqual(animator.footContact, { L: 0, R: 0 });
+  assert.ok(animator.footContact.L > .99 && animator.footContact.R > .99);
   assert.ok(states.includes('jump') && states.includes('fall') && states.includes('landing'));
   assertFinitePose(animator);
 });
@@ -253,7 +253,7 @@ test('bad numeric inputs remain finite and reset clears all transient animation 
   for (const bone of Object.values(animator.bones)) assert.deepEqual(bone.quaternion.toArray(), [0, 0, 0, 1]);
 });
 
-test('living idle gently looks around, shifts weight and taps a foot without changing the physics root', () => {
+test('living idle looks around while both feet and the pelvis remain steady', () => {
   const { animator, root } = makeAnimator();
   const rootMatrix = root.matrix.toArray();
   const yaw = [], shift = [];
@@ -266,8 +266,9 @@ test('living idle gently looks around, shifts weight and taps a foot without cha
     leftReleased ||= animator.footContact.L === 0;
   }
   assert.ok(Math.max(...yaw) - Math.min(...yaw) > 0.07, 'idle head stayed frozen');
-  assert.ok(Math.max(...shift) - Math.min(...shift) > 0.006, 'idle never changed weight');
-  assert.ok(tap > 0.8 && leftReleased, 'idle foot tap never animated');
+  assert.ok(Math.max(...shift) - Math.min(...shift) < .000001, 'idle shifted the pelvis over locked feet');
+  assert.equal(tap, 0);
+  assert.equal(leftReleased, false, 'idle unnecessarily released a planted foot');
   assert.deepEqual(root.matrix.toArray(), rootMatrix);
   assert.equal(animator.state, 'idle');
 });

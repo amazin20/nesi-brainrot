@@ -87,11 +87,12 @@ function showRuntimeError(error) {
 const game = new LabGame({
   container: elements.game,
   touch: { joystick: elements.joystick, joystickKnob: elements.knob, jumpButton: elements.jump },
-  onProgress: ({ completed, total, label }) => {
-    const percent = total > 0 ? Math.round(completed / total * 100) : 0;
+  onProgress: ({ percent: measuredPercent, completed, total, label, loadedBytes, totalBytes, phase }) => {
+    const percent = Math.max(0, Math.min(100, Number.isFinite(measuredPercent) ? measuredPercent : total > 0 ? Math.round(completed / total * 100) : 0));
     elements.loadingBar.style.width = percent + '%';
     elements.loadingPercent.textContent = percent + '%';
-    elements.loadingLabel.textContent = label;
+    elements.loadingLabel.textContent = phase === 'download' && totalBytes > 0
+      ? `${(loadedBytes / 1e6).toFixed(1)} / ${(totalBytes / 1e6).toFixed(1)} МБ · ${label}` : label;
     $('#loading-progress').setAttribute('aria-valuenow', String(percent));
   },
   onReady: () => {
@@ -106,8 +107,9 @@ const game = new LabGame({
     if (smokeMode && !evidenceMode) setTimeout(enterGame, 60);
     else elements.play.focus({ preventScroll: true });
   },
-  onHud: ({ chamber, hasCargo, portalsReady, friendStatus }) => {
+  onHud: ({ chamber, objective, hasCargo, portalsReady, friendStatus }) => {
     elements.chamber.textContent = chamber;
+    $('#objective').textContent = objective || '';
     elements.cargo.textContent = friendStatus || (hasCargo ? 'Друг на руках' : 'Друг ждёт тебя');
     elements.cargo.classList.toggle('status--active', hasCargo);
     elements.portalStatus.textContent = portalsReady ? 'Порталы связаны' : 'Нужна пара порталов';

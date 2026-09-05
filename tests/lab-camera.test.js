@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { LabCamera } from '../src/game/LabCamera.js';
+import { makePortalFrame, portalRotation, transformPortalPoint, transformPortalDirection } from '../src/game/LabPortals.js';
 
 function setup(blockers = []) {
   const camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.06, 160);
@@ -128,4 +129,91 @@ test('aim framing follows the same continuous path at 30, 60 and 144 fps', () =>
     assert.ok(result.position.distanceTo(baseline.position) < .001);
     assert.ok(result.rotation.angleTo(baseline.rotation) < .0001);
   }
+});
+
+test('portal transport preserves the rendered lens, momentum, FOV and aim instead of resetting the rig', () => {
+  const { camera, rig } = setup();
+  const target = new THREE.Vector3(.3, .1, -.4);
+  rig.update({ dt: .04, target, yaw: .2, pitch: -.3, aiming: true, velocity: new THREE.Vector3(2, 0, -3) });
+  const entry = makePortalFrame(new THREE.Vector3(0, 1.2, 0), new THREE.Vector3(0, 0, 1));
+  for (const normal of [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(.4, .8, .2).normalize()]) {
+    const exit = makePortalFrame(new THREE.Vector3(12, 3, -20), normal, new THREE.Vector3(0, 0, 1));
+    const before = {
+      lens: camera.position.clone(), rotation: camera.quaternion.clone(), momentum: rig.focusVelocity.clone(),
+      fov: camera.fov, distance: rig.distance, aim: rig.aimBlend, fovVelocity: rig.fovVelocity,
+    };
+    const expected = transformPortalPoint(before.lens, entry, exit);
+    const expectedRotation = portalRotation(entry, exit).multiply(before.rotation);
+    const destination = transformPortalPoint(target, entry, exit).addScaledVector(exit.normal, .48);
+    const controls = rig.applyPortalTransform(entry, exit, { target: destination, yaw: .2, pitch: -.3 });
+    assert.ok(camera.position.distanceTo(expected) < 1e-9, 'capsule clearance moved the lens instead of the follow target');
+    assert.ok(camera.quaternion.angleTo(expectedRotation) < 1e-7);
+    assert.ok(rig.focusVelocity.distanceTo(transformPortalDirection(before.momentum, entry, exit)) < 1e-9);
+    assert.equal(camera.fov, before.fov); assert.equal(rig.distance, before.distance);
+    assert.equal(rig.aimBlend, before.aim); assert.equal(rig.fovVelocity, before.fovVelocity);
+    rig.update({ dt: 0, target: destination, ...controls, aiming: true });
+    assert.ok(camera.position.distanceTo(expected) < 1e-9, 'the next update rebuilt a different boom at zero elapsed time');
+    assert.ok(camera.quaternion.angleTo(expectedRotation) < 1e-6, 'horizon snapped immediately after transport');
+  }
+});
+
+test('floor exit horizon and capsule correction recover continuously after transport', () => {
+  const { camera, rig } = setup();
+  const entry = makePortalFrame(new THREE.Vector3(0, 1.2, 0), new THREE.Vector3(0, 0, 1));
+  const exit = makePortalFrame(new THREE.Vector3(0, 0, -16), new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0));
+  const target = new THREE.Vector3(0, .1, -16);
+  const controls = rig.applyPortalTransform(entry, exit, { target });
+  let previous = camera.quaternion.clone();
+  for (let i = 0; i < 180; i++) {
+    rig.update({ dt: 1 / 120, target, ...controls });
+    assert.ok(camera.quaternion.angleTo(previous) < .09, 'floor exit rolled in one abrupt camera frame');
+    assert.ok(camera.position.toArray().every(Number.isFinite));
+    previous.copy(camera.quaternion);
+  }
+  assert.ok(camera.up.distanceTo(new THREE.Vector3(0, 1, 0)) < .015);
+});
+
+test('aperture-aware camera collision receives each hit without ignoring the rest of its wall', () => {
+  const blocker = wall(0, 3);
+  const camera = new THREE.PerspectiveCamera(62, 16 / 9, .06, 160);
+  let hits = 0;
+  const rig = new LabCamera({ camera, blockers: [blocker], isBlocker: (object, hit) => {
+    assert.equal(object, blocker); assert.ok(hit.point?.isVector3); hits++;
+    return Math.abs(hit.point.x) > 1.18 || Math.abs(hit.point.y - 2) > 1.58;
+  } });
+  rig.reset(new THREE.Vector3(), 0, -.2);
+  assert.ok(hits > 0); assert.equal(rig.obstructed, false);
+  rig.reset(new THREE.Vector3(4, 0, 0), 0, -.2);
+  assert.equal(rig.obstructed, true);
+});
+
+test('transported lens clips the exit backing wall and restores the optical projection after emerging', () => {
+  const { camera, rig } = setup();
+  const entry = makePortalFrame(new THREE.Vector3(0, 1.32, 0), new THREE.Vector3(0, 0, 1));
+  const exit = makePortalFrame(new THREE.Vector3(0, 1.32, -20), new THREE.Vector3(0, 0, -1));
+  rig.applyPortalTransform(entry, exit, { target: new THREE.Vector3(0, 0, -20.5) });
+  assert.equal(rig.portalExit, exit);
+  assert.ok(exit.position.clone().project(camera).z < -1, 'the destination backing wall hides the transported lens');
+  const expected = camera.clone(); expected.updateProjectionMatrix();
+  assert.notDeepEqual(camera.projectionMatrix.elements, expected.projectionMatrix.elements);
+  camera.position.copy(exit.position).addScaledVector(exit.normal, .3);
+  rig.updatePortalClipping();
+  assert.equal(rig.portalExit, null);
+  assert.deepEqual(camera.projectionMatrix.elements, expected.projectionMatrix.elements);
+  rig.reset(new THREE.Vector3());
+  assert.equal(rig.portalExit, null);
+});
+
+test('a vertical portal view does not convert an Euler singularity into an orbit whip', () => {
+  const { camera, rig } = setup();
+  rig.reset(new THREE.Vector3(), 0, 0);
+  rig.yawVelocity = .4; rig.pitchVelocity = -.3;
+  const entry = makePortalFrame(new THREE.Vector3(0, 1.32, 0), new THREE.Vector3(0, 0, 1));
+  const exit = makePortalFrame(new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1));
+  const target = new THREE.Vector3(0, .1, -20);
+  const controls = rig.applyPortalTransform(entry, exit, { target });
+  assert.ok(Math.abs(rig.yawVelocity) < 1 && Math.abs(rig.pitchVelocity) < 1);
+  const before = camera.quaternion.clone();
+  rig.update({ dt: 1 / 120, target, ...controls });
+  assert.ok(before.angleTo(camera.quaternion) < .09);
 });

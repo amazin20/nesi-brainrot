@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import vm from 'node:vm';
+import { resolveLabPlayerSkin } from '../src/game/LabPlayerAnimator.js';
 import * as THREE from 'three';
 import { LAB_DEVICE_CALIBRATION, LAB_DEVICE_TRANSITION_SECONDS, LabHeldDevice } from '../src/game/LabHeldDevice.js';
 
-function makeDevice() {
+function makeDevice(sourceGeometry = null) {
   const scene = new THREE.Group(), playerRoot = new THREE.Group(), visual = new THREE.Group();
   scene.add(playerRoot); playerRoot.add(visual);
   visual.scale.setScalar(2.4 / 1.085291);
@@ -17,8 +19,8 @@ function makeDevice() {
   const glb = fs.readFileSync(new URL('../public/models/model-11-portal-gun.glb', import.meta.url));
   const doc = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)));
   const accessor = doc.accessors[doc.meshes[0].primitives[0].attributes.POSITION];
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute([...accessor.min, ...accessor.max], 3));
+  const geometry = sourceGeometry || new THREE.BufferGeometry();
+  if (!sourceGeometry) geometry.setAttribute('position', new THREE.Float32BufferAttribute([...accessor.min, ...accessor.max], 3));
   const material = new THREE.MeshStandardMaterial();
   const mesh = new THREE.Mesh(geometry, material); mesh.quaternion.fromArray(doc.nodes[0].rotation).normalize();
   const normalized = new THREE.Group(); normalized.add(mesh);
@@ -182,4 +184,80 @@ test('portal pulse changes only controller-owned effects and expires without mov
   assert.deepEqual(device.diagnostics.gripWorld, before);
   assert.equal(mesh.material, material);
   assert.equal(LAB_DEVICE_CALIBRATION.asset, 'model-11-portal-gun.glb');
+});
+
+
+async function runtimePositions(file) {
+  const scope = { console, TextDecoder, module: { exports: {} } };
+  vm.runInNewContext(fs.readFileSync(new URL('../public/draco/draco_decoder.js', import.meta.url), 'utf8'), scope);
+  const draco = await scope.DracoDecoderModule();
+  const bytes = fs.readFileSync(new URL(`../public/models/runtime/${file}`, import.meta.url));
+  const length = bytes.readUInt32LE(12), doc = JSON.parse(bytes.subarray(20, 20 + length)), bin = bytes.subarray(28 + length);
+  const ext = doc.meshes[0].primitives[0].extensions.KHR_draco_mesh_compression, view = doc.bufferViews[ext.bufferView];
+  const buffer = new draco.DecoderBuffer();
+  buffer.Init(new Int8Array(bin.subarray(view.byteOffset || 0, (view.byteOffset || 0) + view.byteLength)), view.byteLength);
+  const decoder = new draco.Decoder(), decoded = new draco.Mesh();
+  assert.ok(decoder.DecodeBufferToMesh(buffer, decoded).ok());
+  const attribute = decoder.GetAttributeByUniqueId(decoded, ext.attributes.POSITION), array = new draco.DracoFloat32Array();
+  decoder.GetAttributeFloatForAllPoints(decoded, attribute, array);
+  const values = new Float32Array(decoded.num_points() * 3);
+  for (let i = 0; i < values.length; i++) values[i] = array.GetValue(i);
+  draco.destroy(array); draco.destroy(decoded); draco.destroy(decoder); draco.destroy(buffer);
+  return new THREE.Float32BufferAttribute(values, 3);
+}
+
+test('real optimized jacket and holstered casing both physically meet the docking clip', async () => {
+  const gunPositions = await runtimePositions('model-11-portal-gun.glb');
+  const playerPositions = await runtimePositions('model-01-player.glb');
+  const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', gunPositions);
+  const { device, mesh, Body, playerRoot } = makeDevice(geometry);
+  device.setSocket(true);
+  device.holsterMount.geometry.computeBoundingBox();
+  const clip = device.holsterMount.geometry.boundingBox.clone().translate(device.holsterMount.position);
+  const gun = [], jacket = [], point = new THREE.Vector3();
+  let casingContact = Infinity, jacketContact = Infinity;
+  for (let i = 0; i < gunPositions.count; i++) {
+    point.fromBufferAttribute(gunPositions, i); mesh.localToWorld(point); Body.worldToLocal(point);
+    casingContact = Math.min(casingContact, clip.distanceToPoint(point));
+    if (clip.distanceToPoint(point) < .035) gun.push(point.clone());
+  }
+  for (let i = 0; i < playerPositions.count; i++) {
+    point.fromBufferAttribute(playerPositions, i);
+    const skin = resolveLabPlayerSkin(point.x, point.y, point.z);
+    let bodyWeight = 0; for (let j = 0; j < 4; j++) if (skin.indices[j] === 0) bodyWeight += skin.weights[j];
+    if (bodyWeight < .98 || point.x < .08 || point.z > -.3 || point.z < -.6) continue;
+    point.z += .345;
+    jacketContact = Math.min(jacketContact, clip.distanceToPoint(point)); jacket.push(point.clone());
+  }
+  assert.ok(casingContact < .001, `Casing misses docking clip by ${casingContact}`);
+  assert.ok(jacketContact < .001, `Docking clip misses jacket by ${jacketContact}`);
+  let casingJacketGap = Infinity;
+  for (const a of gun) for (const b of jacket) casingJacketGap = Math.min(casingJacketGap, a.distanceTo(b));
+  const scale = Body.getWorldScale(new THREE.Vector3()).x;
+  assert.ok(casingJacketGap * scale < .030, `World gap ${casingJacketGap * scale}`);
+  // The clip follows the same rigid torso as the casing through runs/portals.
+  const mountRelative = device.holsterMount.position.clone();
+  for (let i = 0; i < 24; i++) {
+    Body.rotation.set(Math.sin(i) * .14, i * .05, Math.cos(i) * .08);
+    playerRoot.position.set(i * 3, Math.sin(i) * 2, -i * 5); playerRoot.rotation.y = i * .3;
+    device.update({ dt: 1 / 60, carrying: true });
+    assert.equal(device.attachment.parent, Body);
+    assert.deepEqual(device.holsterMount.position, mountRelative);
+    const worldScale = mesh.getWorldScale(new THREE.Vector3());
+    geometry.computeBoundingBox();
+    assert.ok(Math.abs(worldScale.x * (geometry.boundingBox.max.x - geometry.boundingBox.min.x) - .7) < 1e-6);
+    assert.ok(device.diagnostics.socketDistance < 1e-10);
+  }
+});
+
+test('disposing the docking clip releases only controller-owned resources', () => {
+  const { device, mesh } = makeDevice();
+  const disposed = { clip: false, clipMaterial: false, source: false, material: false };
+  device.holsterMount.geometry.addEventListener('dispose', () => disposed.clip = true);
+  device.mountMaterial.addEventListener('dispose', () => disposed.clipMaterial = true);
+  mesh.geometry.addEventListener('dispose', () => disposed.source = true);
+  mesh.material.addEventListener('dispose', () => disposed.material = true);
+  device.dispose();
+  assert.deepEqual(disposed, { clip: true, clipMaterial: true, source: false, material: false });
+  assert.equal(device.holsterMount.parent, null);
 });

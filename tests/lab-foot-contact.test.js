@@ -22,7 +22,10 @@ test('a planted boot holds its world contact and releases promptly for a jump', 
       lockedSamples++; maxError = Math.max(maxError, f.error);
     }
   }
-  assert.ok(lockedSamples > 50); assert.ok(maxError < .055, `ankle reach error ${maxError}`);
+  // Short legs release a fast travelling stance before overextension; each
+  // cycle still contains real, accurate contacts rather than reacquiring on
+  // every frame and wrenching the knee backwards.
+  assert.ok(lockedSamples >= 10); assert.ok(maxError < .035, `ankle reach error ${maxError}`);
   for (let i = 0; i < 5; i++) animator.update({ dt: 1 / 60, grounded: false, velocity: { y: 6 }, sampleGround });
   for (const f of Object.values(animator.groundContact.feet)) assert.equal(f.blend, 0);
 });

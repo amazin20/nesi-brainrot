@@ -79,6 +79,24 @@ test('placement rejects a blocked opening but accepts its supporting wall and fl
   assert.equal(resolvePortalPlacement(panel, vec(0, 3, .1), { blockers: [pillar] }).ok, true);
 });
 
+test('a diagonal portal on the real exit pad is not obstructed by distant long room walls', () => {
+  const center = vec(-.4, .2, -13.1);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(3.684, .2, 3.684), new THREE.MeshBasicMaterial());
+  Object.assign(panel.userData, { portalable: true, center, normal: vec(0, 1, 0), portalUp: vec(0, 0, 1),
+    portalBounds: { halfWidth: 1.842, halfHeight: 1.842 } });
+  const preferredUp = vec(-.8564211136514691, 0, -.5162779058723872);
+  const blockers = [
+    { box: new THREE.Box3(vec(-9.19, -3, -20), vec(-8.97, 6.2, 3)) },
+    { box: new THREE.Box3(vec(-9, 0, -10.18), vec(4.8, 6.2, -9.96)) },
+  ];
+  const placement = resolvePortalPlacement(panel, vec(-.4011014, .1996526, -13.1006135), { preferredUp, blockers });
+  assert.equal(placement.ok, true, `valid floor shot rejected as ${placement.reason}`);
+  for (const blocker of blockers) assert.equal(portalIntersectsBox(placement.frame, blocker.box, .08, .85), false);
+  blockers.push({ box: new THREE.Box3(vec(-.6, .35, -13.3), vec(-.2, .8, -12.9)) });
+  assert.equal(resolvePortalPlacement(panel, center, { preferredUp, blockers }).reason, 'obstructed',
+    'a real object inside the opening must still block placement');
+});
+
 test('rotated and scaled panels derive bounds in their own plane, not a world AABB', () => {
   const panel = whitePanel(6, 6); panel.scale.x = 1.5; panel.rotation.y = .73;
   panel.updateMatrixWorld(true);
@@ -147,9 +165,66 @@ test('swept crossing only traverses front to back and clears the exit wall', () 
   const result = portalCrossing(a, b, vec(0, 1.5, -0.08), vec(0, 1.5, 0.13), velocity);
   assert.ok(result);
   near(result.velocity, velocity);
-  assert.ok(result.position.clone().sub(b.position).dot(b.normal) >= 0.55 - 1e-8);
+  const clearance = result.position.clone().sub(b.position).dot(b.normal);
+  assert.ok(clearance >= .45 && clearance <= .48, 'the whole radius clears the wall without an oversized exit push');
+  near(result.position.clone().sub(result.exitOffset), result.unadjustedPosition);
   assert.equal(portalCrossing(a, b, vec(0, 1.5, 0.13), vec(0, 1.5, -0.08), velocity), null);
   assert.equal(portalCrossing(a, b, vec(0, 1.5, 0.13), vec(0, 1.5, 0.2), velocity), null);
+});
+
+test('floor orientation follows heading and checks the rotated rim against the actual surface bounds', () => {
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(5, .2, 3), new THREE.MeshBasicMaterial());
+  Object.assign(panel.userData, { portalable: true, center: vec(0, .1, 0), normal: vec(0, 1, 0),
+    portalUp: vec(0, 0, 1), portalBounds: { halfWidth: 2.5, halfHeight: 1.5 } });
+  assert.equal(resolvePortalPlacement(panel, vec(0, .1, 0)).reason, 'too-small');
+  const alongWidth = resolvePortalPlacement(panel, vec(0, .1, 0), { preferredUp: vec(1, 0, 0) });
+  assert.equal(alongWidth.ok, true);
+  near(vec(0, 1, 0).applyQuaternion(alongWidth.frame.quaternion), vec(1, 0, 0));
+  const diagonal = resolvePortalPlacement(panel, vec(0, .1, 0), { preferredUp: vec(1, 0, 1) });
+  assert.equal(diagonal.reason, 'too-small', 'changing heading silently rotated the narrow surface bounds');
+  panel.userData.portalBounds.halfHeight = 2;
+  const moved = resolvePortalPlacement(panel, vec(2.3, .1, .9), { preferredUp: vec(1, 0, 1) });
+  assert.equal(moved.ok, true); assert.equal(moved.adjusted, true);
+  for (let i = 0; i < 128; i++) {
+    const angle = i / 128 * Math.PI * 2;
+    const rim = vec(Math.cos(angle) * moved.frame.width * 1.1, Math.sin(angle) * moved.frame.height * 1.1, 0)
+      .applyQuaternion(moved.frame.quaternion).add(moved.position);
+    assert.ok(Math.abs(rim.x) <= 2.5 - .0199 && Math.abs(rim.z) <= 2 - .0199);
+  }
+});
+
+test('portal attaches to the animated real surface and preserves its position within a rotating panel', () => {
+  const scene = new THREE.Scene(); const portals = new LabPortals({ scene });
+  const hinge = new THREE.Group(); scene.add(hinge);
+  const panel = whitePanel(6, 6); hinge.add(panel);
+  const anchor = new THREE.Object3D(); anchor.position.set(0, 0, .1); panel.add(anchor);
+  panel.userData.portalFrame = () => {
+    anchor.updateWorldMatrix(true, false);
+    return { center: anchor.getWorldPosition(new THREE.Vector3()), normal: vec(0, 0, 1).transformDirection(anchor.matrixWorld),
+      up: vec(0, 1, 0).transformDirection(anchor.matrixWorld), halfWidth: 3, halfHeight: 3, anchor };
+  };
+  const placed = portals.placeOnPanel(0, panel, vec(.35, 3.2, .1));
+  assert.equal(placed.ok, true);
+  const local = anchor.worldToLocal(placed.position.clone());
+  hinge.rotation.x = -.83; hinge.position.y = .16;
+  portals.syncMovingSurfaces();
+  near(placed.frame.position, anchor.localToWorld(local.clone()));
+  near(placed.frame.normal, vec(0, 0, 1).transformDirection(anchor.matrixWorld));
+  near(placed.frame.group.position, placed.frame.position.clone().addScaledVector(placed.frame.normal, .036));
+  const fresh = resolvePortalPlacement(panel, anchor.localToWorld(vec(0, 0, 0)), { preferredUp: vec(1, 0, 0) });
+  assert.equal(fresh.ok, true, 'shooting the moved model used stale static metadata');
+  portals.dispose();
+});
+
+test('caller can request a continuous open-aperture crossing and gets swept timing without losing momentum', () => {
+  const entry = makePortalFrame(vec(0, 1.5, 0), vec(0, 0, 1));
+  const exit = makePortalFrame(vec(0, 1.5, -10), vec(0, 0, -1));
+  const before = vec(.1, 1.5, .06); const position = vec(.1, 1.5, -.02); const velocity = vec(0, 0, -6);
+  const crossing = portalCrossing(entry, exit, position, before, velocity, .45, { exitClearance: 0 });
+  near(crossing.position, transformPortalPoint(position, entry, exit));
+  assert.ok(Math.abs(crossing.crossingFraction - .75) < 1e-9);
+  assert.equal(crossing.exitOffset.lengthSq(), 0);
+  near(crossing.velocity, velocity);
 });
 
 test('capsule radius blocks aperture edges, including diagonal corners', () => {

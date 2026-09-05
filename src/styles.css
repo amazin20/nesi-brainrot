@@ -163,3 +163,4 @@ body[data-play-state='playing'] .lab-reticle, body[data-play-state='playing'] .l
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; }
 }
+.objective-text { max-width: 390px; margin: 8px 0; font-size: 13px; line-height: 1.45; color: #e3eeee; }

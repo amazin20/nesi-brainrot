@@ -29,7 +29,7 @@ const advance = (a, n, input = {}) => { for (let i = 0; i < n; i++) a.update({ d
 
 test('foot paths match position, speed and acceleration through toe-off and heel strike', () => {
   const h = 1e-5;
-  for (const stride of [.047, .1]) for (const seam of [0, .57, 1]) for (const field of ['path', 'lift']) {
+  for (const stride of [.047, .1]) for (const seam of [0, THREE.MathUtils.lerp(.57, .44, .6), 1]) for (const field of ['path', 'lift']) {
     const at = x => sampleLabFootCycle(x, stride, .6)[field];
     const left = (at(seam - h) - at(seam - 2 * h)) / h;
     const right = (at(seam + 2 * h) - at(seam + h)) / h;
@@ -115,7 +115,8 @@ test('jump leads with one knee, flows through its apex and extends for landing w
     const q = animator.bones.ShinL.quaternion;
     // Skip the initial gait-to-jump blend when measuring the apex, where the
     // previous binary sign(vy) jump/fall pose caused the visible frozen switch.
-    if (frame > 15) maxDelta = Math.max(maxDelta, q.angleTo(previous));
+    if (frame > 2) assert.ok(q.angleTo(previous) < .16, 'flight pose jumped in a single frame');
+    if (Math.abs(vy) < 1.5) maxDelta = Math.max(maxDelta, q.angleTo(previous));
     previous.copy(q);
     if (frame === 20) riseKnee = (animator.bones.ShinL.rotation.x + animator.bones.ShinR.rotation.x) * .5;
     if (frame === 65) fallKnee = (animator.bones.ShinL.rotation.x + animator.bones.ShinR.rotation.x) * .5;

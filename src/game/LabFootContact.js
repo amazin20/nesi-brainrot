@@ -41,7 +41,7 @@ export class LabFootContact {
     for (const foot of Object.values(this.feet)) { foot.locked = false; foot.blend = 0; foot.error = 0; }
   }
 
-  update({ dt, root, grounded, contact, sampleGround, moving = 0 }) {
+  update({ dt, root, grounded, contact, sampleGround, moving = 0, speed = 0 }) {
     if (!sampleGround || !root) { this.reset(); return; }
     this.rig.mesh.updateWorldMatrix(true, true);
     const rootPosition = root.getWorldPosition(new THREE.Vector3());
@@ -58,7 +58,10 @@ export class LabFootContact {
       const specZ = this.rig.rest.Body.z + this.rig.rest[`Thigh${side}`].z
         + this.rig.rest[`Shin${side}`].z + this.rig.rest[`Foot${side}`].z;
       const ankleHeight = (this.soleSourceZ - specZ) * scale;
-      const wantsLock = grounded && contact[side] > .55;
+      // Do not reacquire a released overextended foot until the next step.
+      // Reacquiring every frame was the visible knee chatter during running.
+      if (contact[side] < .5 || !grounded) foot.exhausted = false;
+      const wantsLock = grounded && contact[side] > .55 && !foot.exhausted;
       const point = foot.locked && wantsLock ? foot.anchor : fk;
       const support = sampleGround(point.x, point.z, rootPosition.y + .45);
       const height = typeof support === 'number' ? support : support?.height;
@@ -72,25 +75,34 @@ export class LabFootContact {
       if (foot.locked) {
         foot.anchor.y += height - foot.supportHeight; foot.supportHeight = height;
         // A hard reversal releases an overextended lock; it never scales a leg.
-        if (Math.hypot(foot.anchor.x - fk.x, foot.anchor.z - fk.z) > .32) foot.locked = false;
+        if (Math.hypot(foot.anchor.x - fk.x, foot.anchor.z - fk.z) > .24) {
+          foot.locked = false; foot.exhausted = true;
+        }
       }
       const goal = foot.locked ? 1 : 0;
-      foot.blend = clamp(foot.blend + (goal ? 1 : -1) * dt / (goal ? .055 : .06), 0, 1);
+      foot.blend = clamp(foot.blend + (goal ? 1 : -1) * dt / (goal ? .09 : .12), 0, 1);
       // Airborne legs must start the take-off immediately, without a stale lock.
       if (!grounded) foot.blend = Math.max(0, foot.blend - dt * 22);
       if (foot.blend <= 1e-5) { foot.error = 0; continue; }
-      const weight = foot.blend * foot.blend * (3 - 2 * foot.blend);
-      const target = fk.clone().lerp(foot.anchor, weight);
+      // A fast sprint outruns this character's 40 cm legs. Full world pinning
+      // there fights the authored swing and whips the boot back on release.
+      // Keep precise contacts at rest/walk and a gentle floor correction at run.
+      const speedBlend = clamp((speed - 1.8) / 2.7, 0, 1);
+      const strength = 1 - .85 * speedBlend * speedBlend * (3 - 2 * speedBlend);
+      const weight = foot.blend * foot.blend * (3 - 2 * foot.blend) * strength;
+      const target = foot.anchor.clone();
       const local = body.worldToLocal(target.clone());
       const solved = solveFootChain(hip.position, local, this.rig.rest[`Shin${side}`], this.rig.rest[`Foot${side}`]);
-      hip.quaternion.copy(solved.hipQ); knee.quaternion.copy(solved.kneeQ);
+      // Blend the ROTATIONS too. Blending only the position still switched the
+      // knee pole instantly on the first 1% of contact, especially at idle.
+      hip.quaternion.slerp(solved.hipQ, weight); knee.quaternion.slerp(solved.kneeQ, weight);
       hip.updateWorldMatrix(true, true);
       const desiredQ = foot.orientation.clone();
       if (support?.normal) desiredQ.premultiply(new THREE.Quaternion().setFromUnitVectors(UP, support.normal));
       const localQ = knee.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(desiredQ);
       ankle.quaternion.slerp(localQ, weight);
       ankle.updateWorldMatrix(true, false);
-      foot.error = ankle.getWorldPosition(new THREE.Vector3()).distanceTo(target);
+      foot.error = ankle.getWorldPosition(new THREE.Vector3()).distanceTo(fk.clone().lerp(target, weight));
     }
   }
 

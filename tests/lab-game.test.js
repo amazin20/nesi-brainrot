@@ -173,7 +173,8 @@ test('an unladen player crosses the portal centre but the aperture edge stays so
     game.playerPosition.set(x, 0, 1); game.move.set(0, -1);
     for (let i = 0; i < 180 && !game.teleportCount; i++) game.updatePlaying(STEP);
     if (x === 0) {
-      assert.equal(game.teleportCount, 1); assert.ok(game.playerPosition.x >= 8.52);
+      assert.equal(game.teleportCount, 1);
+      assert.ok(game.playerPosition.x >= game.portals.portals[1].position.x + .43 + .025 - 1e-7);
       assert.ok(Math.abs(game.yaw + Math.PI / 2) < 1e-7); assert.ok(game.playerVelocity.x > 0);
     } else { assert.equal(game.teleportCount, 0); assert.ok(game.playerPosition.z >= .629); }
     assert.equal(game.physics.cargoBody, body); assert.equal(game.cargo.group, group);
@@ -212,7 +213,8 @@ test('player and held companion share one portal transform without replacing the
     assert.equal(game.heldCube, cargo); assert.equal(game.physics.cargoBody, body); assert.equal(game.cargo.group, group);
   }
   assert.equal(game.teleportCount, 1); assert.equal(transformed, 1);
-  assert.ok(game.playerPosition.x >= 8.52); assert.ok(game.cargo.position.x > game.playerPosition.x);
+  assert.ok(game.playerPosition.x >= game.portals.portals[1].position.x + .43 + .025 - 1e-7);
+  assert.ok(game.cargo.position.x > game.playerPosition.x);
   assert.ok(game.cargo.position.distanceTo(game.playerPosition.clone().add(new THREE.Vector3(0, 1.06, 0))) < 1);
   run(game, .5);
   assert.equal(game.heldCube, cargo); assert.equal(game.cargo.group.visible, true); assert.equal(game.cubes.length, 1);
