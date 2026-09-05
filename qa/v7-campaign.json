@@ -1,0 +1,271 @@
+{
+  "pass": true,
+  "reports": [
+    {
+      "level": 2,
+      "completed": true,
+      "playerRespawns": 0,
+      "cargoResets": 0,
+      "steps": [
+        {
+          "name": "load first circuit",
+          "player": [
+            -3.999693823548008,
+            0.17181234527514078,
+            7.004742080843935
+          ],
+          "cargo": [
+            -3.9948093358062584,
+            0.5618104916047042,
+            6.284764204950313
+          ],
+          "mechanisms": {
+            "level": 2,
+            "name": "Тихий атриум",
+            "noCheckpoints": true,
+            "gates": [
+              {
+                "opened": true,
+                "progress": 0.9983929150535134
+              },
+              {
+                "opened": false,
+                "progress": 0
+              }
+            ],
+            "liftY": null
+          }
+        },
+        {
+          "name": "retrieve through plate and wall",
+          "player": [
+            -0.0008416017955349404,
+            0,
+            -3.099654506354452
+          ],
+          "cargo": [
+            6.876364657370196,
+            0.38999811672091134,
+            -3.7197013908123813
+          ],
+          "mechanisms": {
+            "level": 2,
+            "name": "Тихий атриум",
+            "noCheckpoints": true,
+            "gates": [
+              {
+                "opened": false,
+                "progress": 0.006966330477349745
+              },
+              {
+                "opened": false,
+                "progress": 0
+              }
+            ],
+            "liftY": null
+          }
+        },
+        {
+          "name": "load independent second circuit",
+          "player": [
+            4.0027067485995085,
+            0.17181234527514078,
+            -10.927742270533109
+          ],
+          "cargo": [
+            4.027773091944212,
+            0.5618104916081155,
+            -11.647300254007613
+          ],
+          "mechanisms": {
+            "level": 2,
+            "name": "Тихий атриум",
+            "noCheckpoints": true,
+            "gates": [
+              {
+                "opened": false,
+                "progress": 2.8848045158093704e-23
+              },
+              {
+                "opened": true,
+                "progress": 0.9983929150535134
+              }
+            ],
+            "liftY": null
+          }
+        },
+        {
+          "name": "retrieve beyond energy barrier",
+          "player": [
+            0.0006110886939822921,
+            0,
+            -22.883328031016227
+          ],
+          "cargo": [
+            -6.8779277447932206,
+            0.3899980101051209,
+            -25.29662712567799
+          ],
+          "mechanisms": {
+            "level": 2,
+            "name": "Тихий атриум",
+            "noCheckpoints": true,
+            "gates": [
+              {
+                "opened": false,
+                "progress": 3.506294663452312e-34
+              },
+              {
+                "opened": false,
+                "progress": 0.006966330477448385
+              }
+            ],
+            "liftY": null
+          }
+        },
+        {
+          "name": "win without resets or fixtures",
+          "player": [
+            -3.404491011637868,
+            0,
+            -24.223290193222866
+          ],
+          "cargo": [
+            -6.6717599332292,
+            0.5196574354856283,
+            -25.296275558545997
+          ],
+          "mechanisms": {
+            "level": 2,
+            "name": "Тихий атриум",
+            "noCheckpoints": true,
+            "gates": [
+              {
+                "opened": false,
+                "progress": 2.8855918159541345e-36
+              },
+              {
+                "opened": false,
+                "progress": 0.00005733113768927914
+              }
+            ],
+            "liftY": null
+          }
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "completed": true,
+      "playerRespawns": 0,
+      "cargoResets": 0,
+      "steps": [
+        {
+          "name": "ride real lift with same companion",
+          "player": [
+            -0.00017472814803076324,
+            3.2,
+            -0.04553471135144967
+          ],
+          "cargo": [
+            -0.002937529792623322,
+            4.260000000000601,
+            -0.765529410586849
+          ],
+          "mechanisms": {
+            "level": 3,
+            "name": "Верхняя мастерская",
+            "noCheckpoints": true,
+            "gates": [
+              {
+                "opened": false,
+                "progress": 0
+              }
+            ],
+            "liftY": 3.2
+          }
+        },
+        {
+          "name": "load first circuit",
+          "player": [
+            -3.6000629598898786,
+            3.371812345275141,
+            -8.694403063126702
+          ],
+          "cargo": [
+            -3.6010879549675767,
+            3.7618127956046497,
+            -9.414397471685444
+          ],
+          "mechanisms": {
+            "level": 3,
+            "name": "Верхняя мастерская",
+            "noCheckpoints": true,
+            "gates": [
+              {
+                "opened": true,
+                "progress": 0.9983929150535134
+              }
+            ],
+            "liftY": 0
+          }
+        },
+        {
+          "name": "retrieve through plate and wall",
+          "player": [
+            -0.0016257905018161104,
+            3.2,
+            -20.400666699649804
+          ],
+          "cargo": [
+            4.817088233548854,
+            3.589998140882738,
+            -23.965251804781875
+          ],
+          "mechanisms": {
+            "level": 3,
+            "name": "Верхняя мастерская",
+            "noCheckpoints": true,
+            "gates": [
+              {
+                "opened": false,
+                "progress": 0.006966330477429868
+              }
+            ],
+            "liftY": 0
+          }
+        },
+        {
+          "name": "win without resets or fixtures",
+          "player": [
+            3.961554456138418,
+            3.2,
+            -24.01368791461529
+          ],
+          "cargo": [
+            4.232766236499562,
+            4.25879062511377,
+            -24.678094769183865
+          ],
+          "mechanisms": {
+            "level": 3,
+            "name": "Верхняя мастерская",
+            "noCheckpoints": true,
+            "gates": [
+              {
+                "opened": false,
+                "progress": 7.296154369244935e-8
+              }
+            ],
+            "liftY": 0
+          }
+        }
+      ]
+    }
+  ],
+  "checks": {
+    "sharedAssetsRetained": true,
+    "noColliderAccumulation": true,
+    "noCheckpoints": true
+  }
+}

@@ -30,8 +30,8 @@ export const CORE_ASSETS = Object.freeze([
 
 export const ALL_LAB_ASSETS = Object.freeze([...CORE_ASSETS, ...LAB_ASSETS]);
 
-// A level declares its own dependencies; the full catalog is not a loading list.
+// Active campaign dependencies exclude the retired decorative door/barrier; the full catalog is not a loading list.
 // The exact set is shared by the loader and the production packaging gate.
-export const FIRST_LEVEL_ASSET_IDS = Object.freeze([1, 2, 11, 13, 14, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]);
+export const FIRST_LEVEL_ASSET_IDS = Object.freeze([1, 2, 11, 13, 14, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]);
 export const FIRST_LEVEL_ASSETS = Object.freeze(ALL_LAB_ASSETS.filter(asset => FIRST_LEVEL_ASSET_IDS.includes(asset.id)));
 export const runtimeAssetPath = asset => `models/runtime/${asset.file}`;

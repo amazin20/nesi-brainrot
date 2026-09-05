@@ -475,7 +475,7 @@ export class LabPlayerAnimator {
       if (expressionTime >= this.expression.duration) this.expression = null;
     }
     const run = smooth(2.5, 5.7, this.speed);
-    const stride = THREE.MathUtils.lerp(0.055, 0.105, run);
+    const stride = THREE.MathUtils.lerp(0.061, 0.110, run);
     const turning = smooth(0.2, 1.8, Math.abs(this.turn)) * (1 - this.moveBlend);
     // Cadence is an authored rhythm, independent of the unusually short source
     // legs. Deriving it from their length produced nine frantic footfalls/s.
@@ -497,6 +497,13 @@ export class LabPlayerAnimator {
     this.idleBlend = damp(this.idleBlend, ground * (1 - this.moveBlend) * (1 - turning)
       * (1 - this.aimBlend) * (1 - this.interactionBlend), 5, dt);
     const idleShift = Math.sin(this.elapsed * 1.45) * this.idleBlend;
+    // A sparse, smooth self-contained gesture rather than a permanently swaying
+    // mannequin. Keep boots planted; only free hands and attention participate.
+    const idleCycle = this.elapsed % 11.3;
+    const fidget = smooth(5.1, 5.55, idleCycle) * (1 - smooth(6.8, 7.35, idleCycle))
+      * this.idleBlend * (1 - this.carryBlend);
+    const counterSwing = Math.sin(this.gait * Math.PI * 2 + .25);
+
     this.idleFootTap = 0;
     const joy = celebrate * ground * (1 - this.aimBlend);
     const hop = Math.sin(clamp(expressionTime / 0.6, 0, 1) * Math.PI) ** 2 * joy;
@@ -504,18 +511,18 @@ export class LabPlayerAnimator {
     // The pelvis rises over the support foot and settles at double support.
     // Reduce the old permanent squat, keeping bounce in legs and pelvis rather
     // than changing the visual/root scale or moving the camera.
-    const strideBounce = (0.002 + run * 0.003) * (1 - Math.cos(cadence * 2)) * 0.5;
+    const strideBounce = (0.004 + run * 0.005) * (1 - Math.cos(cadence * 2)) * 0.5;
     const compression = (0.012 + run * 0.011 - strideBounce) * moving + 0.004 * turnStep - this.landing;
     this.bones.Body.position.copy(this.rig.rest.Body);
     this.bones.Body.position.z += compression + this.interactionBlend * 0.011 + this.anticipation * 0.014 - hop * 0.012;
-    this.bones.Body.position.x += Math.sin(cadence) * moving * (0.0015 + run * 0.001);
+    this.bones.Body.position.x += Math.sin(cadence) * moving * (0.0035 + run * 0.0025);
     const body = this.jointTargets.Body;
-    body.set((0.035 + .045 * run) * moving * this.directionForward + 0.085 * this.inertiaForward * ground
+    body.set((0.050 + .070 * run) * moving * this.directionForward + 0.115 * this.inertiaForward * ground
       + 0.05 * this.carryBlend + this.interactionBlend * 0.095 - this.landing * 0.55,
-      -0.025 * moving * this.directionRight - 0.035 * this.inertiaRight * ground,
-      Math.sin(cadence + 0.15) * 0.024 * moving - this.turn * 0.018);
+      -0.043 * moving * this.directionRight - 0.060 * this.inertiaRight * ground,
+      Math.sin(cadence + 0.15) * 0.042 * moving - this.turn * 0.026);
     body.x += this.airBlend * (0.015 + 0.095 * this.ascentBlend) + this.anticipation * 0.055;
-    body.y += Math.sin(cadence) * moving * 0.014;
+    body.y += Math.sin(cadence) * moving * 0.025;
     this.jointTargets.Head.set(-body.x * 0.6 - this.aimPitch * this.aimBlend * 0.2 + Math.sin(this.elapsed * 1.7) * 0.004,
       -body.y * 0.65 + curious * 0.065 + joy * Math.sin(expressionTime * 10) * 0.03,
       -body.z * 0.65 + Math.sin(this.elapsed * 0.85) * 0.075 * this.idleBlend
@@ -526,6 +533,8 @@ export class LabPlayerAnimator {
       this.attentionPitch - body.x * .6, this.attentionBlend);
     this.jointTargets.Head.z = THREE.MathUtils.lerp(this.jointTargets.Head.z,
       this.attentionYaw - body.z * .65, this.attentionBlend);
+    this.jointTargets.Head.y += curious * .045 + fidget * .020;
+    this.jointTargets.Head.x += curious * Math.sin(expressionTime * 6.2) * .035;
 
     for (const [side, offset, sign] of [['L', 0, -1], ['R', 0.5, 1]]) {
       const cycle = (this.gait + offset) % 1;
@@ -555,8 +564,8 @@ export class LabPlayerAnimator {
         -lateralRoll, this.turn * 0.018 * turnStep);
       this.footContact[side] = grounded && (planted || moving + turnStep < 0.05) ? ground : 0;
       const swingPhase = (cycle + 0.05) * Math.PI * 2;
-      const swing = clamp(Math.sin(swingPhase) * (0.20 + 0.20 * run)
-        + Math.sin(swingPhase * 2) * run * 0.025, -0.42, 0.42) * moving
+      const swing = clamp(Math.sin(swingPhase) * (0.27 + 0.22 * run)
+        + Math.sin(swingPhase * 2) * run * 0.035, -0.50, 0.50) * moving
         * (this.directionForward + this.directionRight * 0.35);
       const idle = Math.sin(this.elapsed * 1.7 + offset) * 0.016 + Math.sin(this.elapsed * 0.67 + sign) * 0.006;
       const arm = this.jointTargets[`Arm${side}`];
@@ -566,8 +575,11 @@ export class LabPlayerAnimator {
         - this.anticipation * 0.11, sign * (0.04 + this.airBlend * 0.025),
         sign * this.airBlend * (0.07 + (1 - this.ascentBlend) * 0.04));
       forearm.set(-0.09 - Math.max(0, -swing) * 0.40 - this.airBlend * (0.10 + this.ascentBlend * 0.17), 0, 0);
-      hand.set(0.02, 0, side === 'L' ? Math.sin(swingPhase + 0.4) * run * moving * 0.025 : 0);
+      hand.set(0.02 + Math.sin(swingPhase - .35) * moving * .035, 0,
+        side === 'L' ? Math.sin(swingPhase + 0.4) * (.03 + run * .025) * moving : 0);
       if (side === 'L') {
+        arm.x -= fidget * .19; forearm.x -= fidget * .24;
+        hand.z += fidget * Math.sin(idleCycle * 4.5) * .12;
         const wave = joy * (1 - this.carryBlend);
         arm.x = THREE.MathUtils.lerp(arm.x, -0.38 - Math.sin(expressionTime * 13) * 0.055, wave);
         arm.z = THREE.MathUtils.lerp(arm.z, 0.045 + Math.sin(expressionTime * 13) * 0.045, wave);
@@ -579,10 +591,10 @@ export class LabPlayerAnimator {
         const hold = this.weaponBlend;
         // Moderate shoulder/elbow bends preserve the joined jacket sleeve.
         // Most vertical aim belongs to the wrist; the device follows HandR.
-        arm.x = THREE.MathUtils.lerp(arm.x, -0.31 - this.aimBlend * 0.09 - pitch * 0.12 + swing * 0.08 + this.recoil * 0.025, hold);
-        arm.y = THREE.MathUtils.lerp(arm.y, 0.045, hold);
+        arm.x = THREE.MathUtils.lerp(arm.x, -0.21 - this.aimBlend * 0.19 - pitch * 0.12 + swing * (0.42 - .34 * this.aimBlend) + this.recoil * 0.025, hold);
+        arm.y = THREE.MathUtils.lerp(arm.y, 0.045 + counterSwing * moving * .025 * (1 - this.aimBlend), hold);
         arm.z = THREE.MathUtils.lerp(arm.z, 0.025, hold);
-        forearm.x = THREE.MathUtils.lerp(forearm.x, -0.44 - this.aimBlend * 0.10 - pitch * 0.14 - this.recoil * 0.055, hold);
+        forearm.x = THREE.MathUtils.lerp(forearm.x, -0.44 + .10 * moving * (1 - this.aimBlend) - this.aimBlend * 0.10 - pitch * 0.14 - Math.sin(swingPhase - .4) * moving * .085 * (1 - this.aimBlend) - this.recoil * 0.055, hold);
         hand.set(THREE.MathUtils.lerp(hand.x, 0.08 + this.aimBlend * 0.19 - pitch * 0.74 - this.recoil * 0.045, hold),
           hold * 0.025, -hold * 0.025);
       }

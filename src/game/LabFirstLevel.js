@@ -1,3 +1,4 @@
+import { createArchitecturalGate } from './LabArchitecturalGate.js';
 import * as THREE from 'three';
 import { LabPressurePlatform, LabRotatingPanel, LabCounterweightBridge } from './LabArticulatedProps.js';
 import { LabDoorMechanism, LabBarrierMechanism } from './LabMechanisms.js';
@@ -281,29 +282,20 @@ export function buildLabFirstLevel(game) {
   box(-9, 0, -10.18, 4.8, config.ceiling, -9.96, backing, { solid: true });
   game.label('ШЛЮЗ →', 5.9, 3.4, -9.9, 2.7, '#eef5e9');
 
-  const doorArt = prop(17, 5.2, [0, 0, config.doorZ + .20], 1, 0, { height: true });
-  const doorMechanism = new LabDoorMechanism(doorArt);
+  const doorBuild = createArchitecturalGate(game, { z: config.doorZ });
+  const doorArt = doorBuild.art, doorMechanism = doorBuild.mechanism;
   const doorLeafColliders = doorMechanism.getLeafBoxes().map(bounds => solid(bounds, { kinematic: true }));
   const doorFrameColliders = doorMechanism.getFrameBoxes().map(bounds => solid(bounds));
-  const doorBounds = dimensions(doorArt);
-  box(-9, 0, config.doorZ - .10, doorBounds.min.x, config.ceiling, config.doorZ + .25, backing, { solid: true });
-  box(doorBounds.max.x, 0, config.doorZ - .10, 9, config.ceiling, config.doorZ + .25, backing, { solid: true });
-  box(doorBounds.min.x, doorBounds.max.y, config.doorZ - .10, doorBounds.max.x, config.ceiling, config.doorZ + .25, backing, { solid: true });
   const exitDoor = { art: doorArt, mechanism: doorMechanism, leafColliders: doorLeafColliders, frameColliders: doorFrameColliders,
     collider: doorLeafColliders[0], mesh: doorLeafColliders[0].mesh, pad: exitPad, buttonRing: exitPad.indicator,
     z: config.doorZ, progress: 0, previousProgress: 0, opened: false, contact: 0 };
   game.doors.push(exitDoor);
 
-  const barrierArt = prop(20, 3.8, [0, 0, config.barrierZ], 2, 0, { height: true });
-  const barrierMechanism = new LabBarrierMechanism(barrierArt);
-  const barrierBounds = dimensions(barrierArt), opening = barrierMechanism.opening.clone().applyMatrix4(barrierArt.matrixWorld);
-  const fieldBounds = new THREE.Box3(V(opening.min.x, 0, config.barrierZ - .09), V(opening.max.x, opening.max.y, config.barrierZ + .09));
+  const barrierBuild = createArchitecturalGate(game, { z: config.barrierZ, kind: 'barrier' });
+  const barrierArt = barrierBuild.art, barrierMechanism = barrierBuild.mechanism;
+  const fieldBounds = barrierBuild.opening.clone();
   const barrierCollider = solid(fieldBounds, { kinematic: true }); barrierCollider.mesh.userData.field = true;
-  solid(new THREE.Box3(barrierBounds.min.clone(), V(opening.min.x, barrierBounds.max.y, barrierBounds.max.z)));
-  solid(new THREE.Box3(V(opening.max.x, barrierBounds.min.y, barrierBounds.min.z), barrierBounds.max.clone()));
-  box(-9, 0, config.barrierZ - .1, opening.min.x, config.ceiling, config.barrierZ + .1, backing, { solid: true });
-  box(opening.max.x, 0, config.barrierZ - .1, 9, config.ceiling, config.barrierZ + .1, backing, { solid: true });
-  box(opening.min.x, fieldBounds.max.y, config.barrierZ - .1, opening.max.x, config.ceiling, config.barrierZ + .1, backing, { solid: true });
+  barrierMechanism.getFrameBoxes().forEach(bounds => solid(bounds));
   const barrier = { art: barrierArt, mechanism: barrierMechanism, collider: barrierCollider, mesh: barrierCollider.mesh,
     position: V(0, 0, config.barrierZ), progress: 0, previousProgress: 0, opened: false, contact: 0 };
 
@@ -563,12 +555,9 @@ export function buildLabFirstLevel(game) {
     barrier, chargePad: exitPad, lift, launchPad, launchRing: null, terminals: [receiverPanel.control], recoveryFloors: floors.filter(f => f.y < 0),
     update, reset, interact, nearbyInteraction, renderUpdate, getLaunch, getObjective,
     cargoOnAnyPad: () => pads.some(cargoOnPad),
-    // Respawn only the player on the bank already reached. Leaving a persistent
-    // companion beyond an unloaded bridge must never lock its owner outside.
-    getCheckpoint: () => exitWasReached ? [0, 0, -22] : bridgeWasCrossed ? [-2.65, 0, -8.7] : [...config.spawn],
     isWon: () => game.playerPosition.z < -21.3 && game.cargo?.position.z < -20.9 && game.playerPosition.distanceTo(game.cargo.position) < 4,
     diagnostics: () => ({ name: '01 / ВМЕСТЕ ЧЕРЕЗ МОСТ', bridgeCrossed: bridgeWasCrossed, bridgeLoaded: bridgePad.pressed,
       bridgeProgress: bridge.progress, receiverDeployed: receiverPanel.deployed, exitLoaded: exitPad.pressed,
-      doorOpen: exitDoor.opened, barrierOpen: barrier.opened, nativeModels: [13, 14, 17, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] }),
+      doorOpen: exitDoor.opened, barrierOpen: barrier.opened, nativeModels: [13, 14, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] }),
   };
 }

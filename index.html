@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#12272d" />
-    <meta name="description" content="NESI / Transfer Lab — спокойная 3D-головоломка. Новый первый уровень: проведи друга через мастерскую: исследуй порталы, мосты и подъёмник." />
+    <meta name="description" content="NESI / Transfer Lab — спокойная 3D-головоломка. Три мастерские, порталы, мосты и подъёмник. Доставьте друга до выхода вместе." />
     <title>NESI / Transfer Lab — 3D-игра от третьего лица</title>
   </head>
   <body>
@@ -22,8 +22,9 @@
       <div class="hero-panel">
         <span class="brand">NESI <i></i> МАЛЕНЬКОЕ ПУТЕШЕСТВИЕ</span>
         <h1 id="game-title">TRANSFER<br /><span>LAB</span></h1>
-        <div class="hero-meta"><span>01 / Мост для двоих</span><span>Один друг</span><span>Можно не спешить</span></div>
-        <p class="lead">Исследуй мастерскую вместе с брейнротом. Его вес опускает мост и открывает шлюз. Пройди вперёд и забери друга через портал в самой плите. Белые поверхности и нажимные плиты принимают порталы; окрашенные стены — нет.</p>
+        <div class="hero-meta"><span>Три уровня · v7</span><span>Один друг</span><span>Можно не спешить</span></div>
+        <p class="lead">Пройдите три разные мастерские вдвоём. Вес друга включает механизмы; порталы возвращают его к тебе. Чекпоинтов нет. Падение в зоне восстановления не прерывает прохождение.</p>
+        <label class="setting-row">Уровень <select id="level-select"><option value="0">01 · Мост для двоих</option><option value="1">02 · Тихий атриум</option><option value="2">03 · Верхняя мастерская</option></select></label>
         <button id="play-button" class="primary-button">Отправиться вместе <span aria-hidden="true">↗</span></button>
         <div class="control-grid" aria-label="Управление">
           <span><kbd>WASD</kbd> движение</span><span><kbd>Мышь</kbd> камера</span>
@@ -54,7 +55,10 @@
         <h2 id="pause-title">Пауза<span>.</span></h2>
         <p class="muted">Продолжим с того же места.</p>
         <button id="resume-button" class="primary-button">Продолжить <span aria-hidden="true">→</span></button>
-        <button id="restart-button" class="secondary-button">Начать заново</button>
+        <button id="restart-button" class="secondary-button">Начать уровень заново</button>
+        <button id="level-menu-button" class="secondary-button">Выбрать другой уровень</button>
+        <label class="setting-row"><span>Обучение внизу экрана</span><input id="tutorial-toggle" type="checkbox" checked></label>
+        <label class="setting-row">Графика <select id="quality-select"><option value="low">Лёгкая</option><option value="balanced" selected>Сбалансированная</option><option value="high">Высокая</option></select></label>
       </div>
     </section>
     <section id="win-screen" class="screen modal-screen" aria-labelledby="win-title" aria-hidden="true">

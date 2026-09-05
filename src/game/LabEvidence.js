@@ -1,3 +1,4 @@
+import { FIRST_LEVEL_ASSETS } from './labAssets.js';
 import * as THREE from 'three';
 
 const DT = 1 / 120;
@@ -283,7 +284,7 @@ export async function runChecks(game, driver, progress = () => {}, { includeRend
   };
   await check('source-models', () => {
     const d = game.diagnostics();
-    assert(d.modelsLoaded === 18 && d.missingModels.length === 0, 'All 18 runtime level models must load');
+    assert(d.modelsLoaded === FIRST_LEVEL_ASSETS.length && d.missingModels.length === 0, 'All declared campaign models must load');
     assert(d.animation.sourceAttributesPreserved && d.animation.boneCount >= 14, 'Player source appearance and skeleton');
     assert(d.cargo.count === 1 && d.physicsHz === 120, 'One companion and 120 Hz physics');
     return d;
@@ -649,4 +650,55 @@ export function mountLabEvidence(game) {
   panel.addEventListener('pointerdown', event => event.stopPropagation());
   panel.addEventListener('mousedown', event => event.stopPropagation());
   return { driver, panel, stop, dispose: () => { stop(); frameCapture?.restore(); delete window.__LAB_EVIDENCE_CAPTURE__; state.urls.forEach(url => URL.revokeObjectURL(url)); panel.remove(); } };
+}
+
+/** Continuous campaign proof, using production controls and raycast shots only.
+ * No player-position fixture and no cargo replacement/reset. Rendering can be
+ * suspended by the caller; the exact production physics still runs at 120 Hz. */
+export function runCampaignJourney(game, index = game.levelIndex) {
+  assert(index===game.levelIndex && [1,2].includes(index), 'Select the requested new level first');
+  const fullVisual=game.updateVisuals.bind(game);
+  game.updateVisuals=dt=>{
+    game.visualTime+=dt;game.playerGroup.position.copy(game.playerPosition);game.playerGroup.rotation.y=game.facing;
+    game.cargo.group.position.copy(game.cargo.position);game.cargo.group.quaternion.copy(game.cargo.quaternion);
+    game.scene.updateMatrixWorld(true);
+  };
+  const d=createEvidenceDriver(game);d.step(.7);
+  const level=game.firstLevel,cargo=game.cargo,body=game.physics.cargoBody;
+  const reset=game.physics.resetCargo.bind(game.physics),respawn=game.respawn.bind(game);
+  game.physics.resetCargo=()=>{throw new Error('Cargo reset during continuous campaign route');};
+  game.respawn=()=>{throw new Error('Player respawn during continuous campaign route');};
+  const steps=[];
+  const mark=name=>{assert(game.cargo===cargo,'Companion was replaced');assert(game.physics.cargoBody===body,'Body was replaced');
+    steps.push({name,player:game.playerPosition.toArray(),cargo:cargo.position.toArray(),mechanisms:level.diagnostics()});};
+  const shoot=(slot,panel,point)=>{aimEvidencePoint(game,point);assert(game.placePortal(slot),`Shot rejected ${slot}: ${point.toArray()}`);assert(game.portalSurfaceIds[slot]===panel.uuid,'Wrong portal surface');};
+  const pickup=()=>{d.pressE();d.step(.7);assert(game.heldCube===cargo,`pickup ${game.playerPosition.toArray()} cargo ${cargo.position.toArray()}`);};
+  const weight=pad=>{d.goto(pad.position.x,pad.position.z+2.7);d.goto(pad.position.x,pad.position.z+.85);d.step(.5);d.pressE();d.step(2);assert(pad.pressed,`pad not loaded ${cargo.position.toArray()}`);};
+  try {
+    if(index===1)shoot(0,level.pads[0].top,level.pads[0].mechanism.getPortalFrame().center);
+    d.goto(cargo.position.x,cargo.position.z+1.1);pickup();
+    if(index===2){
+      d.goto(0,5);d.goto(0,0);d.step(6);assert(game.playerPosition.y>3.15&&game.heldCube===cargo,'loaded lift did not reach balcony');
+      mark('ride real lift with same companion');d.goto(0,-4.8);d.goto(-3.6,-5.8);d.pressE();d.step(.8);
+      shoot(0,level.pads[0].top,level.pads[0].mechanism.getPortalFrame().center);pickup();
+    }
+    weight(level.pads[0]);mark('load first circuit');
+    if(index===1){d.goto(0,4);d.goto(0,-3);}
+    else{d.goto(0,-12.5);d.goto(0,-20.3);}
+    const receiver=level.panels[0], point=receiver.userData.center.clone();point.y-=.20;
+    shoot(1,receiver,point);d.step(1.3);assert(cargo.position.z<0,'companion not transported');mark('retrieve through plate and wall');
+    d.goto(cargo.position.x+(index===1?-1: -1),cargo.position.z+.25);if(game.state!=='won')pickup();
+    if(index===1){
+      d.goto(6,-4.2);d.goto(6,-8.0);game.clearPortals();d.pressE();d.step(.8);
+      shoot(0,level.pads[1].top,level.pads[1].mechanism.getPortalFrame().center);pickup();
+      weight(level.pads[1]);mark('load independent second circuit');d.goto(0,-15);d.goto(0,-22.8);
+      const r=level.panels[1],p=r.userData.center.clone();p.y-=.20;shoot(1,r,p);d.step(1.3);mark('retrieve beyond energy barrier');
+      d.goto(cargo.position.x+1,cargo.position.z+.1);
+    }
+    if(game.state!=='won')d.goto(game.cargo.position.x, -25.3);
+    d.step(.3);assert(game.state==='won','both actors must reach goal');mark('win without resets or fixtures');
+    game.updateVisuals=fullVisual;for(let i=0;i<90;i++)fullVisual(1/60,1);
+    assert(game.animator.diagnostics.boneCount===14,'Unexpected player rig');
+    return {level:index+1,completed:true,playerRespawns:0,cargoResets:0,steps};
+  } finally { game.physics.resetCargo=reset; game.respawn=respawn; game.updateVisuals=fullVisual; }
 }

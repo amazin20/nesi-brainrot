@@ -1,5 +1,6 @@
 import './styles.css';
 import { LabGame } from './game/LabGame.js';
+import { CAMPAIGN } from './game/LabCampaignLevels.js';
 
 const $ = (selector) => document.querySelector(selector);
 const query = new URLSearchParams(location.search);
@@ -28,10 +29,8 @@ function showScreen(screen, visible) {
   screen.inert = !visible;
 }
 function showToast(message) {
-  clearTimeout(toastTimer);
-  elements.toast.textContent = message;
-  elements.toast.classList.add('toast--active');
-  toastTimer = setTimeout(() => elements.toast.classList.remove('toast--active'), 3500);
+  // Only actionable errors enter the optional bottom lesson area.
+  if (/Сначала|не помещается|препятствие|белую|Раздвинь|свободное|лицевую/.test(message)) game.tutorial.explain(message);
 }
 function clearQueuedInputs() {
   if (!game.input) return;
@@ -63,7 +62,7 @@ function publishDiagnostics() {
     gameReady: String(ready), runtimeState: report.state,
     modelsLoaded: String(report.modelsLoaded), modelFallbacks: String(missing),
     levelSmoke: ready ? 'pass' : 'fail', isCarrying: String(Boolean(game.heldCube)),
-    checkpointIndex: String(report.stage),
+    levelIndex: String(report.levelIndex ?? 0),
   });
   if (debugMode) window.__NESI_DEMO_DIAGNOSTICS__ = {
     ...report, suspiciousFallbacks: missing,
@@ -102,6 +101,11 @@ const game = new LabGame({
     publishDiagnostics();
     if (debugMode) {
       window.__NESI_DEMO_GAME__ = game;
+      window.__NESI_RUN_LEVEL_ROUTE__ = async () => {
+        const {runCampaignJourney}=await import('./game/LabEvidence.js');
+        game.renderer.setAnimationLoop(null);
+        return runCampaignJourney(game);
+      };
       window.__NESI_DEMO_DIAGNOSTIC_TIMER__ = setInterval(publishDiagnostics, 200);
     }
     if (smokeMode && !evidenceMode) setTimeout(enterGame, 60);
@@ -127,17 +131,27 @@ const game = new LabGame({
   onWin: () => {
     setPlayState('won');
     showScreen(elements.win, true);
+    elements.playAgain.textContent = game.levelIndex < CAMPAIGN.length - 1 ? 'Следующий уровень →' : 'Пройти ещё раз ↻';
+    $('#win-screen .muted').textContent = game.levelIndex < CAMPAIGN.length - 1 ? 'Друг с тобой. Впереди другая мастерская и новая задача.' : 'Все три уровня пройдены. Никого не забыли.';
     elements.playAgain.focus({ preventScroll: true });
     publishDiagnostics();
   },
 });
-function enterGame() {
-  for (const screen of [elements.start, elements.pause, elements.win]) showScreen(screen, false);
-  setPlayState('playing');
-  document.activeElement?.blur?.();
-  clearQueuedInputs();
-  try { game.start(); } catch (error) { showRuntimeError(error); return; }
-  publishDiagnostics();
+let entering = false;
+async function enterGame() {
+  if (entering) return;
+  entering = true;
+  const level = Number($('#level-select').value);
+  try {
+    for (const screen of [elements.start, elements.pause, elements.win]) showScreen(screen, false);
+    clearQueuedInputs(); document.activeElement?.blur?.();
+    if (level !== game.levelIndex) {
+      showScreen(elements.loading, true); setPlayState('loading');
+      await game.selectLevel(level, false); showScreen(elements.loading, false);
+    }
+    setPlayState('playing'); game.start(); publishDiagnostics();
+  } catch (error) { showRuntimeError(error); }
+  finally { entering = false; }
 }
 function resumeGame() {
   clearQueuedInputs();
@@ -152,7 +166,7 @@ function restartGame() {
 }
 for (const screen of document.querySelectorAll('.screen:not(.screen--active)')) showScreen(screen, false);
 elements.play.addEventListener('click', enterGame);
-elements.playAgain.addEventListener('click', enterGame);
+elements.playAgain.addEventListener('click', () => { $('#level-select').value = String((game.levelIndex + 1) % CAMPAIGN.length); enterGame(); });
 elements.pauseButton.addEventListener('click', () => game.togglePause(true));
 elements.resume.addEventListener('click', resumeGame);
 elements.restart.addEventListener('click', restartGame);
@@ -190,6 +204,20 @@ addEventListener('unhandledrejection', (event) => {
     return;
   }
   showRuntimeError(event.reason);
+});
+const requestedLevel = Number(query.get('level') || 1) - 1;
+game.levelIndex = Number.isInteger(requestedLevel) && requestedLevel >= 0 && requestedLevel < CAMPAIGN.length ? requestedLevel : 0;
+$('#level-select').value = String(game.levelIndex);
+$('#tutorial-toggle').addEventListener('change', event => { game.tutorial.enabled = event.target.checked; });
+$('#level-menu-button').addEventListener('click', () => {
+  showScreen(elements.pause, false); showScreen(elements.start, true); setPlayState('ready');
+  $('#level-select').value = String(game.levelIndex);
+});
+$('#quality-select').addEventListener('change', event => {
+  const [ratio,resolution] = {low:[1,640],balanced:[1.5,960],high:[1.75,1280]}[event.target.value];
+  game.quality = { pixelRatio: ratio, portalResolution: resolution };
+  game.renderer.setPixelRatio(Math.min(devicePixelRatio,ratio)); game.renderer.setSize(innerWidth,innerHeight);
+  game.portals.maxResolution = resolution; game.performanceMonitor.reset();
 });
 game.init().then(async () => {
   if (evidenceMode) {

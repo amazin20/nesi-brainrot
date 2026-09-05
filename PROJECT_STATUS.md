@@ -1,12 +1,11 @@
 # NESI — current work
 
-- Source repository: `amazin20/nesi-brainrot` (renamed from `pronesi-eto-physics-lab`).
-- Release: character life v5, based on `animation-v4` plus preserved uncommitted fixes; published from `main`.
-- Current implementation and validation: [Character life v5](docs/CHARACTER_FEEL_V5.md).
-- Real-model simulation report: [continuous-journey.json](qa/continuous-journey.json).
-- Main game: Vite / Three.js / cannon-es, entry `src/main.js` → `LabGame`.
-- Gallery: `public/gallery.html`; separate model concepts: `public/concepts.html`.
-- Hosting: GitHub Pages only, per user request. Live demo: https://amazin20.github.io/nesi-brainrot/
-- Deployment: `.github/workflows/deploy-pages.yml`, on push to `main`; `dist/` is built on GitHub. Do not switch hosting providers.
-- `npm test`; `node scripts/lab-journey.mjs`; `npm run build`.
-- No local browser rendering / video / device FPS verification is claimed for v5.
+- Repository: `amazin20/nesi-brainrot`; Vite / Three.js / cannon-es; `src/main.js` → `LabGame`.
+- V7 branch: `fix/portal-life-levels-v7`, based on main `f7a82c3`.
+- Release specification and limits: [RELEASE_V7.md](docs/RELEASE_V7.md).
+- Three independent playable courses; index `?level=1`, `?level=2`, `?level=3`.
+- 214 unit tests; original and new continuous real-model route harnesses; browser smoke with actual level menu/next buttons.
+- Source assets retained; runtime dependency list now 16 models.
+- Live hosting remains GitHub Pages only: https://amazin20.github.io/nesi-brainrot/
+- Deployment: `.github/workflows/deploy-pages.yml` after push to main. Never identify an unverified branch as the live published version.
+- Commands: `npm run check`; `node scripts/lab-journey.mjs`; `node scripts/v7-journey.mjs`; CI Chromium `node scripts/v7-browser.mjs`.

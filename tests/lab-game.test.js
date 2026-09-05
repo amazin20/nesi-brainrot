@@ -446,3 +446,52 @@ test('a closing doorway waits for the player then closes when the opening is cle
   game.playerPosition.z -= 2; run(game, 1.5, 'updateDoors');
   assert.ok(door.progress < .003); game.close();
 });
+
+test('v7: launcher impulse rotates with the traveller instead of pushing back into the exit', () => {
+  const game=fixture();portalPair(game);game.playerPosition.set(0,0,1.0);
+  game.launchTime=.8;game.launchVector=new THREE.Vector3(0,0,-10);
+  for(let i=0;i<40&&!game.teleportCount;i++)game.updatePlaying(STEP);
+  assert.equal(game.teleportCount,1);
+  const exit=game.portals.portals[1];
+  assert.ok(game.launchVector.dot(exit.normal)>9.9,'remaining impulse stayed in the old world frame');
+  const signed=game.playerPosition.clone().sub(exit.position).dot(exit.normal);
+  for(let i=0;i<5;i++)game.updatePlaying(STEP);
+  assert.ok(game.playerPosition.clone().sub(exit.position).dot(exit.normal)>signed,'launcher reversed traveller into wall');
+  game.close();
+});
+
+test('v7: 100 immediate high-speed returns never miss a crossing during the former cooldown', () => {
+  const game=fixture();portalPair(game);game.playerPosition.set(0,0,1);game.move.set(0,-1);
+  for(let i=0;i<120&&!game.teleportCount;i++)game.updatePlaying(STEP);
+  assert.equal(game.teleportCount,1);
+  const cargo=game.cargo,body=game.physics.cargoBody;
+  game.respawn=()=>{throw new Error('Rapid portals respawned the player');};
+  let fastest=Infinity;
+  for(let crossing=1;crossing<=100;crossing++) {
+    const current=game.portals.portals[crossing%2];
+    // An external impulse reverses travel while the body is still close to the
+    // exit. This covers launchers/collisions, not just slow walking reversals.
+    game.launchTime=.14;game.launchVector=current.normal.clone().multiplyScalar(-10);
+    let ticks=0;
+    while(game.teleportCount===crossing&&ticks++<14)game.updatePlaying(STEP);
+    assert.equal(game.teleportCount,crossing+1,`re-entry ${crossing} skipped`);
+    fastest=Math.min(fastest,ticks*STEP);
+    assert.ok(game.playerPosition.toArray().every(Number.isFinite));
+    assert.ok(game.playerPosition.y>-.05);
+    assert.equal(game.cargo,cargo);assert.equal(game.physics.cargoBody,body);
+  }
+  assert.ok(fastest<.07,'regression did not exercise the old timer window');game.close();
+});
+
+test('v7: 100 sprint reversals through the same portal pair preserve the traveller', () => {
+  const game=fixture();portalPair(game);game.playerPosition.set(0,0,1);game.input.keys.add('ShiftLeft');game.move.set(0,-1);
+  game.respawn=()=>{throw new Error('Walking portal loop respawned');};
+  for(let crossing=0;crossing<100;crossing++) {
+    const entry=game.portals.portals[crossing%2];const direction=entry.normal.clone().negate();
+    game.yaw=Math.atan2(-direction.x,-direction.z);
+    let ticks=0;while(game.teleportCount===crossing&&ticks++<360)game.updatePlaying(STEP);
+    assert.equal(game.teleportCount,crossing+1,`sprint crossing ${crossing} stalled`);
+    assert.ok(game.playerPosition.y>-.1);
+  }
+  game.close();
+});
