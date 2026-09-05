@@ -7,14 +7,14 @@ import { LabPlayerAnimator } from './LabPlayerAnimator.js';
 import { LabHeldDevice } from './LabHeldDevice.js';
 import { LabPortals, portalBacksCollider, transformPortalPoint, pointInsidePortal } from './LabPortals.js';
 import { LabPhysics, sampleRampSurface } from './LabPhysics.js';
-import { buildLabFirstLevel } from './LabFirstLevel.js';
+import { buildPhysicsCampaign, CAMPAIGN_V8 as CAMPAIGN, campaignAssets } from './LabCampaignV8.js';
+import { ALL_LAB_ASSETS } from './labAssets.js';
 import { loadLabModels } from './LabAssetLoader.js';
 import { LabCompanionAnimator } from './LabCompanionAnimator.js';
 import { LabCompanionBehavior } from './LabCompanionBehavior.js';
 import { LabCompanionRig } from './LabCompanionRig.js';
 import { LabPerformance } from './LabPerformance.js';
 import { LabTutorial } from './LabTutorial.js';
-import { buildLabCampaignLevel, CAMPAIGN } from './LabCampaignLevels.js';
 import { disposeLabLevel } from './LabLevelLifecycle.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -108,9 +108,11 @@ export class LabGame {
     addEventListener('resize', () => { this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(innerWidth, innerHeight); });
   }
 
-  async loadAssets() {
-    const result = await loadLabModels({ renderer: this.renderer, onProgress: this.callbacks.onProgress });
-    this.assets = result.assets;
+  async loadAssets(index = this.levelIndex) {
+    const models = ALL_LAB_ASSETS.filter(a => campaignAssets(index).includes(a.id) && !this.assets.has(a.id));
+    if (!models.length) return;
+    const result = await loadLabModels({ renderer: this.renderer, models, onProgress: this.callbacks.onProgress });
+    for (const [id, asset] of result.assets) this.assets.set(id, asset);
     this.loadingProfile = result.profile;
   }
 
@@ -223,7 +225,7 @@ export class LabGame {
 
   buildLevel() {
     const previousRoots = new Set(this.scene.children);
-    this.firstLevel = this.levelIndex === 0 ? buildLabFirstLevel(this) : buildLabCampaignLevel(this, this.levelIndex);
+    this.firstLevel = buildPhysicsCampaign(this, this.levelIndex);
     this.mechanisms = this.firstLevel;
     this.launchPad = this.firstLevel.launchPad;
     this.playerGroup = new THREE.Group();
@@ -259,6 +261,8 @@ export class LabGame {
   async selectLevel(index, playing = true) {
     if (!Number.isInteger(index) || index < 0 || index >= CAMPAIGN.length) throw new RangeError('Unknown campaign level');
     this.state = 'loading'; this.renderer?.setAnimationLoop(null); this.input?.keys.clear();
+    await this.loadAssets(index);
+    this.audio?.motor?.('lift', 0); this.audio?.motor?.('bridge', 0);
     disposeLabLevel(this); this.levelIndex = index; this.buildLevel();
     this.portalActors.prepare();
     if (this.renderer?.compileAsync) await this.renderer.compileAsync(this.scene, this.camera);
@@ -359,7 +363,7 @@ export class LabGame {
       }
     }
     if (!this.placeOnPanel(index, hit.object, hit.point)) return false;
-    this.audio.tone(index ? 450 : 680, .13, 'sine', .04);
+    this.audio.portal?.(index); this.audio.tone?.(index ? 450 : 680, .13, 'sine', .015);
     return true;
   }
 
@@ -406,7 +410,7 @@ export class LabGame {
   resetRun(playing = true) {
     for (const id of this.portalCargoColliders) this.physics.setStaticEnabled(id, true);
     this.portalCargoColliders.clear();
-    this.state = playing ? 'playing' : 'ready'; this.stage = 0; this.elapsed = 0; this.teleportCount = 0;
+    this.state = playing ? 'playing' : 'ready'; this.stage = 0; this.elapsed = 0; this.teleportCount = 0; this.portalInertia = false; this.crossingEvents = [];
     this.heldCube = null; this.portalCooldown = 0; this.portals.clear(); this.portalSurfaceIds = [null, null];
     this.launchTime = 0; this.aimHeld = false; this.aimingTime = 0; this.completedStages = 0;
     this.socialClock = 0; this.jumpBuffer = this.coyoteTime = 0; this.jumpWindup = 0; this.carryMotionPhase = 0; this.interactQueued = false;
@@ -458,14 +462,14 @@ export class LabGame {
     const dt = Math.min(.1, frameMs / 1000); this.lastFrame = now;
     if (this.state === 'playing') this.performanceMonitor.sample(frameMs, now, this.renderer?.info?.render);
     if (this.input.consumePause()) this.togglePause();
-    if (this.state === 'playing' && this.input.consumeRestart()) this.restart();
+    if (this.state === 'playing' && this.input.consumeRestart()) { if (this.requestRestart) this.requestRestart(); else this.restart(); }
     if (this.state === 'playing') {
       this.accumulator += dt;
       while (this.accumulator + 1e-10 >= FIXED_STEP) {
         this.updatePlaying(FIXED_STEP); this.accumulator = Math.max(0, this.accumulator - FIXED_STEP);
       }
     }
-    this.updateVisuals(this.state === 'paused' ? 0 : dt, this.accumulator / FIXED_STEP);
+    this.updateVisuals(this.state !== 'playing' ? 0 : dt, this.accumulator / FIXED_STEP);
     this.render(); this.renderFrames++;
     if (this.fpsElement && now - (this.lastUiUpdate ?? 0) > 180) {
       this.lastUiUpdate = now; const stats = this.performanceMonitor.stats;
@@ -515,8 +519,15 @@ export class LabGame {
     const speed = this.heldCube ? (sprint ? 4.5 : 2.9) : aiming ? 2.55 : sprint ? 5.0 : 3.3;
     const desired = new THREE.Vector3(move.x, 0, move.y).applyAxisAngle(UP, this.yaw).multiplyScalar(speed);
     const acceleration = this.playerGrounded ? (move.lengthSq() ? 10.5 : 15) : 3;
-    this.playerVelocity.x = THREE.MathUtils.damp(this.playerVelocity.x, desired.x, acceleration, dt);
-    this.playerVelocity.z = THREE.MathUtils.damp(this.playerVelocity.z, desired.z, acceleration, dt);
+    if (this.portalInertia && !this.playerGrounded) {
+      // A portal rotates momentum; the movement controller must not secretly
+      // erase that momentum after transport. Air steering is a bounded force.
+      const steering = new THREE.Vector3(move.x,0,move.y).applyAxisAngle(UP,this.yaw);
+      this.playerVelocity.addScaledVector(steering, 2.2 * dt);
+    } else {
+      this.playerVelocity.x = THREE.MathUtils.damp(this.playerVelocity.x, desired.x, acceleration, dt);
+      this.playerVelocity.z = THREE.MathUtils.damp(this.playerVelocity.z, desired.z, acceleration, dt);
+    }
     if (this.launchTime > 0) {
       this.playerVelocity.x = this.launchVector?.x ?? 0;
       this.playerVelocity.z = this.launchVector?.z ?? -10;
@@ -563,7 +574,12 @@ export class LabGame {
         this.companionAnimator.trigger('portal');
       }
       this.playerPosition.copy(teleport.position).addScaledVector(UP, -CENTER_HEIGHT);
+      const incomingSpeed = this.playerVelocity.length();
       this.playerVelocity.copy(teleport.velocity);
+      this.portalInertia = !wasGrounded || Math.abs(exit.normal.y) > .05 || Math.abs(entry.normal.y) > .05;
+      this.crossingEvents ??= [];
+      this.crossingEvents.push({incomingSpeed, outgoingSpeed:teleport.velocity.length(), entry:teleport.entryIndex, exit:teleport.exitIndex});
+      if(this.crossingEvents.length > 256) this.crossingEvents.shift();
       // A launcher impulse belongs to the traveller frame too. Keeping the old
       // world-space impulse forced the next tick backwards into the exit wall.
       if (this.launchTime > 0 && this.launchVector) this.launchVector.applyQuaternion(teleport.rotation);
@@ -582,7 +598,7 @@ export class LabGame {
       this.portalVisualOffset.copy(transportedVisual).sub(this.playerPosition);
       const upright = new THREE.Quaternion().setFromAxisAngle(UP, this.facing);
       this.portalVisualRotation.copy(transportedQ).multiply(upright.invert());
-      this.audio.tone(620, .12, 'triangle', .035);
+      this.audio.transport?.();
     } else this.resolveBody(this.playerPosition, previous, this.playerVelocity, PLAYER_RADIUS, PLAYER_HEIGHT, true);
     this.playerGrounded = Boolean(this.groundedByCollider);
     if (this.playerGrounded && !wasGrounded && downwardImpact > 1) {
@@ -594,6 +610,7 @@ export class LabGame {
       this.playerPosition.y = floor; this.playerVelocity.y = 0; this.playerGrounded = true;
       if (!wasGrounded && impact > 1) { this.animator.triggerLanding(impact); this.audio.land?.(impact); this.lastLanding = impact; }
     }
+    if(this.playerGrounded) this.portalInertia = false;
     if (this.playerPosition.y < -12) { this.respawn(); return; }
     const planar = Math.hypot(this.playerVelocity.x, this.playerVelocity.z);
     const priorFacing = this.facing;
@@ -645,7 +662,7 @@ export class LabGame {
       const planeDistance = Math.abs(center.clone().sub(portal.position).dot(portal.normal));
       if (planeDistance > radius + .7 + Math.abs(portal.normal.y) * CENTER_HEIGHT) return false;
       // The aperture opens both its thin white panel and the structural wall behind it.
-      return collider.mesh.uuid === this.portalSurfaceIds[index] || portalBacksCollider(portal, collider.box);
+      return collider.mesh.uuid === this.portalSurfaceIds[index] || this.portalPanels.find(p=>p.uuid===this.portalSurfaceIds[index])?.userData.portalHostCollider === collider.mesh.uuid || portalBacksCollider(portal, collider.box);
     });
   }
 
